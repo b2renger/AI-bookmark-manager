@@ -11,7 +11,8 @@ export const UrlInput: React.FC<UrlInputProps> = ({ onProcess, isLoading }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const processedUrls = text.split('\n').map(line => {
+    // Added explicit return type to map to ensure inferred type is consistent for the filter predicate
+    const processedUrls = text.split('\n').map((line): { url: string; addDate?: string } | null => {
         const trimmedLine = line.trim();
 
         // Check for Netscape bookmark format with ADD_DATE (case-insensitive)

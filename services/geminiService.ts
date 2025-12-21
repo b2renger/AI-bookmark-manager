@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 
 // Custom error to be thrown when API key is invalid
@@ -8,49 +9,65 @@ export class ApiKeyError extends Error {
   }
 }
 
-const MAX_RETRIES = 3; // Maximum number of retries for a single API call
-const INITIAL_BACKOFF_MS = 1000; // Initial delay for backoff in milliseconds (1 second)
+const MAX_RETRIES = 2; 
+const INITIAL_BACKOFF_MS = 1500;
 
-// Helper function to introduce a delay
 function delay(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export async function generateBookmarkDetails(url: string): Promise<{ title: string; summary: string; keywords: string[]; publicationDate: string | null; sources: { uri: string; title: string }[] }> {
+export async function generateBookmarkDetails(url: string): Promise<{ 
+    title: string; 
+    summary: string; 
+    keywords: string[]; 
+    publicationDate: string | null; 
+    sources: { uri: string; title: string }[] 
+}> {
     if (!process.env.API_KEY) {
         throw new ApiKeyError("API_KEY environment variable is not set. Please select a key.");
     }
     
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
-            // Create a new instance for each attempt to ensure the latest API key is used.
+            // Use gemini-3-flash-preview as per guidelines for basic text and search tasks
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
             const prompt = `
-            Analyze the content of the webpage at the following URL using your search tool.
-            Your task is to extract specific details for a bookmark.
-            URL: ${url}
-
-            Please return your response as a single, valid JSON object with the following structure:
+            Analyze the content of the webpage at: ${url}
+            
+            Task:
+            1. Use the search tool to extract the site's main content, title, and publication date.
+            2. Provide a concise 2-sentence summary and 3-5 relevant keywords.
+            
+            Response Format (Return ONLY this JSON object):
             {
-              "title": "A concise and fitting title for the bookmark based on the URL's content.",
-              "summary": "A brief, one or two-sentence summary of the webpage's main content.",
-              "keywords": ["an", "array", "of", "3-5", "relevant", "keywords"],
-              "publicationDate": "The primary publication or last updated date of the article/content in ISO 8601 format (YYYY-MM-DD). Prioritize the most prominent date on the page. If no date can be found, return null."
+              "title": "Page title here",
+              "summary": "1-2 sentence summary of content",
+              "keywords": ["kw1", "kw2", "kw3"],
+              "publicationDate": "ISO 8601 date string or null"
             }
-            Do not include any other text or formatting outside of this JSON object.
-        `;
+            `;
             
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
+                model: "gemini-3-flash-preview",
                 contents: prompt,
                 config: {
-                    tools: [{googleSearch: {}}],
-                    temperature: 0.2,
+                    tools: [{ googleSearch: {} }],
+                    temperature: 0.1,
                 }
             });
 
-            // Extract grounding chunks as per API guidelines.
+            // CRITICAL FIX: Safely extract text output from response to avoid TypeError on .trim()
+            const responseText = response.text || "";
+            if (!responseText) {
+                const candidate = response.candidates?.[0];
+                if (candidate?.finishReason === 'SAFETY') {
+                    throw new Error("Content blocked by safety filters.");
+                }
+                throw new Error("Empty response received from AI. The site might be blocking bots.");
+            }
+
+            // Extract grounding chunks for citations/sources
             const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
             const sources = groundingChunks?.map((chunk: any) => {
                 if (chunk.web && chunk.web.uri) {
@@ -62,49 +79,56 @@ export async function generateBookmarkDetails(url: string): Promise<{ title: str
                 return null;
             }).filter((source: any): source is { uri: string; title: string; } => source !== null) || [];
 
-            const text = response.text.trim();
-            // The model can sometimes wrap the JSON in ```json ... ``` which we need to strip.
-            const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
-            const jsonText = jsonMatch ? jsonMatch[1] : text;
+            // Robust JSON extraction to handle search citations or markdown wrapping
+            const rawText = responseText.trim();
+            const jsonMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/) || 
+                            rawText.match(/{[\s\S]*}/);
+            
+            const jsonToParse = jsonMatch ? jsonMatch[1] || jsonMatch[0] : rawText;
 
-            const parsed = JSON.parse(jsonText);
-            
-            if (!parsed.title || !parsed.summary || !Array.isArray(parsed.keywords)) {
-                throw new Error("Invalid JSON structure received from API.");
+            try {
+                const parsed = JSON.parse(jsonToParse);
+                
+                return {
+                    title: parsed.title || "Untitled Bookmark",
+                    summary: parsed.summary || "No summary available.",
+                    keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
+                    publicationDate: parsed.publicationDate || null,
+                    sources,
+                };
+            } catch (parseError) {
+                console.warn("Could not parse JSON from AI response, attempting fallback extraction.", rawText);
+                return {
+                    title: url.replace(/^https?:\/\//, '').split('/')[0] || "Webpage",
+                    summary: responseText.length > 15 ? responseText.substring(0, 150) + "..." : "Summary generation failed.",
+                    keywords: [],
+                    publicationDate: null,
+                    sources,
+                };
             }
-            
-            return {
-                title: parsed.title,
-                summary: parsed.summary,
-                keywords: parsed.keywords,
-                publicationDate: parsed.publicationDate || null,
-                sources,
-            };
 
         } catch (error: any) {
-            console.error(`Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed for URL ${url}:`, error);
+            console.error(`Gemini API Error (Attempt ${attempt + 1}):`, error);
             const errorMessage = error?.message || '';
 
-            // Check for invalid API key errors first, and do not retry for these.
+            // Bubble up specific key errors to trigger UI reset
             if (errorMessage.includes('API key not valid') || errorMessage.includes('Requested entity was not found')) {
-                throw new ApiKeyError('Invalid API Key. Please select a new one.');
+                throw error;
             }
 
-            // Check if it's a rate limit error (RESOURCE_EXHAUSTED)
+            // Exponential backoff for rate limiting
             if (errorMessage.includes('RESOURCE_EXHAUSTED') && attempt < MAX_RETRIES) {
-                const delayTime = INITIAL_BACKOFF_MS * Math.pow(2, attempt); // Exponential backoff
-                console.warn(`Retrying in ${delayTime}ms due to RESOURCE_EXHAUSTED for URL: ${url}`);
-                await delay(delayTime);
-                continue; // Try again
+                const waitTime = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
+                await delay(waitTime);
+                continue;
             }
 
-            // If it's a grounding error or other non-retryable error, or if max retries reached
-            if (error instanceof Error && error.message.includes('grounding')) {
-                 throw new Error("Failed to access URL content. The page might be private or inaccessible or the content is unparseable by the AI.");
+            if (attempt === MAX_RETRIES) {
+                throw new Error(errorMessage || "API request failed after retries.");
             }
-            throw new Error(`Failed to generate bookmark details after ${attempt + 1} attempts. It might be due to API quota limits or an unknown issue. Please try again later.`);
+            
+            await delay(1000);
         }
     }
-    // This part should technically be unreachable if the loop condition is correct and an error is always thrown
-    throw new Error("Unexpected error: generateBookmarkDetails loop finished without returning or throwing.");
+    throw new Error("Bookmark details generation failed unexpectedly.");
 }

@@ -1,7 +1,9 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { UrlInput } from './components/UrlInput';
 import { BookmarkList } from './components/BookmarkList';
 import { Header } from './components/Header';
+import { ApiKeySetup } from './components/ApiKeySetup';
 import { generateBookmarkDetails, ApiKeyError } from './services/geminiService';
 import { Bookmark } from './types';
 import { v4 as uuidv4 } from 'uuid';
@@ -11,24 +13,17 @@ const THEME_STORAGE_KEY = 'ai-bookmark-manager-theme';
 
 // Helper function to remove UTM tracking parameters from a URL
 const stripUtmParams = (urlString: string): string => {
-  if (!urlString || !urlString.includes('utm_')) return urlString; // Quick check for performance
+  if (!urlString || !urlString.includes('utm_')) return urlString;
   try {
     const url = new URL(urlString);
     const params = url.searchParams;
-    
-    // Get all keys and filter for UTM params
     const keysToDelete = Array.from(params.keys()).filter(key => key.startsWith('utm_'));
-    
     if (keysToDelete.length > 0) {
         keysToDelete.forEach(key => params.delete(key));
         return url.toString();
     }
-    
-    // Return original if no UTM keys were found, preserving original string format
     return urlString; 
   } catch (e) {
-    // If URL parsing fails (e.g., no protocol), return the original string.
-    // The Gemini API call will handle the invalid URL later.
     return urlString;
   }
 };
@@ -37,7 +32,7 @@ const App: React.FC = () => {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
 
   // Initialize dark mode from localStorage or system preference
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -48,51 +43,69 @@ const App: React.FC = () => {
       }
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
     } catch (e) {
-      console.error("Failed to read theme from localStorage:", e);
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
   });
+
+  // Check if API key is already selected on mount
+  useEffect(() => {
+    const checkKey = async () => {
+      // @ts-ignore - aistudio is injected environment
+      if (window.aistudio?.hasSelectedApiKey) {
+        // @ts-ignore
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasKey(selected);
+      } else {
+        // Fallback or development environment
+        setHasKey(true);
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleSelectKey = async () => {
+    // @ts-ignore
+    if (window.aistudio?.openSelectKey) {
+      // @ts-ignore
+      await window.aistudio.openSelectKey();
+      // Guidelines state: proceed assuming success after triggering dialog
+      setHasKey(true); 
+    }
+  };
 
   // Load bookmarks from localStorage on initial mount
   useEffect(() => {
     const storedBookmarks = localStorage.getItem(AI_BOOKMARKS_STORAGE_KEY);
     if (storedBookmarks) {
       try {
-        // Fix: Correctly type parsed bookmarks to allow for missing fields in legacy data.
-        const parsedBookmarks: (Pick<Bookmark, 'url' | 'title' | 'summary' | 'keywords'> & Partial<Pick<Bookmark, 'id' | 'status' | 'createdAt' | 'sources'>>)[] = JSON.parse(storedBookmarks);
-        // Simple migration for old bookmarks without a createdAt date
-        const migratedBookmarks = parsedBookmarks.map(b => ({
+        const parsedBookmarks = JSON.parse(storedBookmarks);
+        const migratedBookmarks = parsedBookmarks.map((b: any) => ({
             ...b,
             id: b.id || uuidv4(),
-            status: b.status || 'done',
+            status: b.status === 'processing' ? 'error' : (b.status || 'done'),
             createdAt: b.createdAt || new Date().toISOString(),
         })) as Bookmark[];
         setBookmarks(migratedBookmarks);
       } catch (e) {
-        console.error("Failed to parse stored bookmarks from localStorage:", e);
-        // Clear corrupted data to prevent future errors
+        console.error("Failed to parse stored bookmarks:", e);
         localStorage.removeItem(AI_BOOKMARKS_STORAGE_KEY);
       }
     }
-  }, []); // Empty dependency array means this runs once on mount
+  }, []);
 
-  // Save bookmarks to localStorage whenever the bookmarks state changes
+  // Save bookmarks to localStorage
   useEffect(() => {
     localStorage.setItem(AI_BOOKMARKS_STORAGE_KEY, JSON.stringify(bookmarks));
-  }, [bookmarks]); // Dependency array includes 'bookmarks'
+  }, [bookmarks]);
 
-  // Apply dark mode class to HTML element and save preference
+  // Apply dark mode
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
-    } catch (e) {
-      console.error("Failed to save theme to localStorage:", e);
-    }
+    localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
   const toggleDarkMode = useCallback(() => {
@@ -105,7 +118,6 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
 
-    // Clean URLs and filter out any that are already queued, completed, or duplicated in the new batch.
     const existingUrls = new Set(bookmarks.filter(b => b.status !== 'error').map(b => b.url));
     const uniqueUrlData: { url: string; addDate?: string }[] = [];
 
@@ -113,7 +125,7 @@ const App: React.FC = () => {
         const cleanedUrl = stripUtmParams(data.url);
         if (!existingUrls.has(cleanedUrl)) {
             uniqueUrlData.push({ ...data, url: cleanedUrl });
-            existingUrls.add(cleanedUrl); // Add to set to handle duplicates within the same batch
+            existingUrls.add(cleanedUrl);
         }
     }
 
@@ -129,54 +141,41 @@ const App: React.FC = () => {
       summary: '',
       keywords: [],
       status: 'processing',
-      // Prioritize the imported bookmark date, otherwise use the current date.
       createdAt: data.addDate || new Date().toISOString(),
     }));
 
-    // Add bookmarks in 'processing' state to the UI immediately. They are added to the end.
     setBookmarks(prev => [...prev, ...newBookmarks]);
 
-    // Process bookmarks sequentially to avoid hitting API rate limits.
     for (const bookmark of newBookmarks) {
       try {
         const details = await generateBookmarkDetails(bookmark.url);
-        
         const isWarning = !details.summary || details.keywords.length === 0;
 
-        // Update the specific bookmark in the list with the fetched details.
         setBookmarks(prev => prev.map(b => 
             b.id === bookmark.id 
             ? {
                 ...bookmark,
                 title: details.title,
-                summary: details.summary || "AI could not generate a summary. The content might be inaccessible, too short, or complex.",
+                summary: details.summary || "AI summary generation failed.",
                 keywords: details.keywords,
                 sources: details.sources,
-                // Use AI date if available, otherwise keep the creation date
                 createdAt: details.publicationDate ? new Date(details.publicationDate).toISOString() : bookmark.createdAt,
                 status: isWarning ? 'warning' : 'done',
               }
             : b
         ));
-      } catch (e) {
-        if (e instanceof ApiKeyError) {
-          setError("A valid API key is required. Please ensure it's configured correctly.");
-          
-          // Clean up all bookmarks from this batch that are still processing.
-          // Those that are 'done' can stay.
-          const newBookmarkIds = new Set(newBookmarks.map(nb => nb.id));
-          setBookmarks(prev => prev.filter(b => {
-              // Keep if it's not part of the new batch, or if it is but it's not processing anymore
-              return !newBookmarkIds.has(b.id) || b.status !== 'processing';
-          }));
-          
-          setIsLoading(false); // Stop the main loading indicator
-          return; // Stop processing further bookmarks
-        }
-        
-        console.error(`Failed to process URL ${bookmark.url}:`, e);
+      } catch (e: any) {
         const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-        // Update the bookmark with an error state.
+        
+        // Handle mandatory key re-selection on specific errors
+        if (errorMessage.includes('Requested entity was not found') || errorMessage.includes('API key not valid')) {
+          setError("Session expired or API key invalid. Please re-select your key.");
+          setHasKey(false);
+          setBookmarks(prev => prev.filter(b => b.status !== 'processing'));
+          setIsLoading(false);
+          return;
+        }
+
         setBookmarks(prev => prev.map(b => 
             b.id === bookmark.id
             ? {
@@ -189,20 +188,17 @@ const App: React.FC = () => {
         ));
       }
 
-      // Add a small delay between API calls to stay under the rate limit.
-      // No delay needed after the last item.
+      // Respect rate limits
       if (newBookmarks.indexOf(bookmark) < newBookmarks.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1100)); // Just over 1s for ~55 RPM
+          await new Promise(resolve => setTimeout(resolve, 1100));
       }
     }
     
-    setIsLoading(false); // All bookmarks processed.
+    setIsLoading(false);
   }, [bookmarks]);
 
   const handleUpdateBookmark = useCallback((updatedBookmark: Bookmark) => {
-    setBookmarks(prev =>
-      prev.map(b => (b.id === updatedBookmark.id ? updatedBookmark : b))
-    );
+    setBookmarks(prev => prev.map(b => (b.id === updatedBookmark.id ? updatedBookmark : b)));
   }, []);
 
   const handleDeleteBookmark = useCallback((id: string) => {
@@ -215,58 +211,47 @@ const App: React.FC = () => {
 
   const handleRetryBookmark = useCallback(async (bookmarkId: string) => {
     const bookmarkToRetry = bookmarks.find(b => b.id === bookmarkId);
-    if (!bookmarkToRetry || (bookmarkToRetry.status !== 'error' && bookmarkToRetry.status !== 'warning')) {
-      return;
-    }
+    if (!bookmarkToRetry) return;
 
     const cleanedUrl = stripUtmParams(bookmarkToRetry.url);
-
-    // Set loading state for the specific bookmark for immediate feedback
-    setBookmarks(prev =>
-      prev.map(b =>
-        b.id === bookmarkId
-          ? { ...b, url: cleanedUrl, status: 'processing', title: 'Processing...', summary: '' }
-          : b
-      )
-    );
+    setBookmarks(prev => prev.map(b => b.id === bookmarkId ? { ...b, status: 'processing', title: 'Retrying...' } : b));
     setError(null);
 
     try {
       const details = await generateBookmarkDetails(cleanedUrl);
-
       const isWarning = !details.summary || details.keywords.length === 0;
 
-      setBookmarks(prev =>
-        prev.map(b =>
+      setBookmarks(prev => prev.map(b =>
           b.id === bookmarkId
             ? {
                 ...bookmarkToRetry,
                 url: cleanedUrl,
                 title: details.title,
-                summary: details.summary || "AI could not generate a summary. The content might be inaccessible, too short, or complex.",
+                summary: details.summary || "AI summary generation failed.",
                 keywords: details.keywords,
                 sources: details.sources,
                 createdAt: details.publicationDate ? new Date(details.publicationDate).toISOString() : bookmarkToRetry.createdAt,
                 status: isWarning ? 'warning' : 'done',
               }
             : b
-        )
-      );
-    } catch (e) {
-        if (e instanceof ApiKeyError) {
-            setError("A valid API key is required. Please ensure it's configured correctly.");
-        }
-        console.error(`Failed to re-process URL ${cleanedUrl}:`, e);
+      ));
+    } catch (e: any) {
         const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-        setBookmarks(prev =>
-            prev.map(b =>
-                b.id === bookmarkId
-                    ? { ...bookmarkToRetry, url: cleanedUrl, status: 'error' as const, summary: errorMessage, title: 'Error processing URL' }
-                    : b
-            )
-        );
+        if (errorMessage.includes('Requested entity was not found') || errorMessage.includes('API key not valid')) {
+            setHasKey(false);
+            setError("API key invalid. Please re-select.");
+            return;
+        }
+        setBookmarks(prev => prev.map(b => b.id === bookmarkId ? { ...b, status: 'error' as const, summary: errorMessage, title: 'Retry failed' } : b));
     }
   }, [bookmarks]);
+
+  if (hasKey === false) {
+    return <ApiKeySetup onSelectKey={handleSelectKey} error={error} />;
+  }
+
+  // Prevent UI flicker while checking initial state
+  if (hasKey === null) return null;
 
   return (
     <div className="min-h-screen text-slate-800 dark:text-slate-200 font-sans">
