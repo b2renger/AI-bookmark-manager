@@ -1,15 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Custom error to be thrown when API key is invalid
-export class ApiKeyError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ApiKeyError';
-  }
-}
-
-const MAX_RETRIES = 2; 
-const INITIAL_BACKOFF_MS = 2500;
+const MAX_RETRIES = 3; 
+const INITIAL_BACKOFF_MS = 5000;
 
 function delay(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -25,12 +17,11 @@ export interface BookmarkResult {
 }
 
 /**
- * Generates details for a batch of URLs in a single API call to optimize quota usage.
- * Processes multiple URLs simultaneously to stay within RPM/RPD limits.
+ * Generates details for a batch of URLs using the url_context tool.
  */
 export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkResult[]> {
     if (!process.env.API_KEY) {
-        throw new ApiKeyError("API_KEY environment variable is not set.");
+        throw new Error("API Key is missing.");
     }
 
     if (urls.length === 0) return [];
@@ -39,33 +30,33 @@ export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkRe
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
+            // Prepare links for the url_context tool
+            const urlContextLinks = urls.map(url => ({ url }));
+
             const prompt = `
-            Analyze the following list of URLs and provide detailed summaries:
+            Analyze these URLs using the url_context tool to fetch their actual live content.
+            
+            Requested URLs:
             ${urls.map((url, i) => `${i + 1}. ${url}`).join('\n')}
             
-            Instructions for EACH URL:
-            1. Use the search tool to find the actual page content and metadata.
-            2. Extract a clear title and a 2-sentence informative summary.
-            3. Identify 3-5 specific keywords.
+            For each URL:
+            1. Extract the main headline or page title.
+            2. Write a 2-sentence summary of the core content.
+            3. Identify 3-5 relevant keywords.
+            4. Find the publication date (YYYY-MM-DD format).
 
-            
-            SPECIAL HANDLING FOR TWITTER/X LINKS:
-            - If the URL is from twitter.com or x.com, it is a social media post.
-            - TITLE: Format as "Post by [Username] (@handle)".
-            - SUMMARY: The summary MUST be the literal content or a highly accurate description of the specific tweet's text and media. Do not provide a generic site description.
-            - KEYWORDS: Extract any hashtags present in the tweet and use them as keywords. Add other relevant topical keywords.
-            
-            GENERAL INSTRUCTIONS:
-            - SEARCH FOR THE ORIGINAL PUBLICATION DATE. For articles or tweets, find when it was originally posted.
-            - Return the publication date strictly in ISO 8601 format (YYYY-MM-DD). If no clear date is found, return null.
-            
-            Format your response as a valid JSON array of objects.
-            JSON structure:
+            IF IT IS A TWEET/X POST:
+            - Transcription: You MUST transcribe the tweet text exactly as it appears.
+            - Title: Set title to "Tweet by [User] (@handle)".
+            - Keywords: Use all hashtags present in the tweet.
+
+            Return your response ONLY as a JSON array of objects.
+            JSON Format Example:
             [
               {
-                "url": "input_url_here",
-                "title": "Page Title",
-                "summary": "Informative summary...",
+                "url": "input_url",
+                "title": "Title Here",
+                "summary": "Summary here...",
                 "keywords": ["kw1", "kw2"],
                 "publicationDate": "YYYY-MM-DD"
               }
@@ -76,20 +67,21 @@ export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkRe
                 model: "gemini-3-flash-preview",
                 contents: prompt,
                 config: {
-                   // tools: [{ googleSearch: {} }],
-                    temperature: 0.2,
+                    // Correct implementation of the url_context tool
+                    tools: [{ 
+                        // @ts-ignore
+                        url_context: {} 
+                    }],
+                    temperature: 0.1,
                     responseMimeType: "application/json"
                 }
             });
 
             const responseText = response.text;
             if (!responseText) {
-                const candidate = response.candidates?.[0];
-                if (candidate?.finishReason === 'SAFETY') throw new Error("Batch blocked by safety filters.");
                 throw new Error("Empty AI response received.");
             }
 
-            // Extract global grounding sources for this batch
             const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
             const groundingChunks = groundingMetadata?.groundingChunks || [];
             const sources = groundingChunks
@@ -102,20 +94,17 @@ export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkRe
             let results: any[];
             try {
                 results = JSON.parse(responseText.trim());
-                if (!Array.isArray(results)) throw new Error("Response is not a JSON array.");
             } catch (e) {
-                console.error("Failed to parse batch JSON:", responseText);
-                throw new Error("Invalid JSON format in AI response.");
+                console.error("JSON Parse Error:", responseText);
+                throw new Error("Failed to parse analysis results. The page might be protected or too complex.");
             }
 
-            // Map and validate results against requested URLs
             return urls.map(originalUrl => {
                 const found = results.find(r => 
-                    r.url?.toLowerCase() === originalUrl.toLowerCase() || 
+                    r.url?.toLowerCase().includes(originalUrl.toLowerCase()) || 
                     originalUrl.toLowerCase().includes(r.url?.toLowerCase() || '---')
                 );
                 
-                // Validate publicationDate format
                 let validDate: string | null = null;
                 if (found?.publicationDate && typeof found.publicationDate === 'string') {
                     const d = new Date(found.publicationDate);
@@ -130,31 +119,26 @@ export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkRe
                     summary: found?.summary || "Summary could not be generated.",
                     keywords: Array.isArray(found?.keywords) ? found.keywords : [],
                     publicationDate: validDate,
-                    sources: sources.slice(0, 5), // Provide representative sources for the batch
+                    sources: sources.length > 0 ? sources.slice(0, 5) : [{ uri: originalUrl, title: "Source Content" }],
                 };
             });
 
         } catch (error: any) {
-            console.error(`Batch Attempt ${attempt + 1} failed:`, error);
-            const status = error?.status;
             const message = error?.message || "";
+            const isQuotaError = message.includes('429') || message.includes('RESOURCE_EXHAUSTED');
 
-            if (message.includes('API key not valid') || message.includes('404')) {
-                throw new ApiKeyError("API Key invalid or expired.");
-            }
-
-            // Handle Rate Limiting (429) specifically with exponential backoff
-            if ((status === 429 || message.includes('RESOURCE_EXHAUSTED')) && attempt < MAX_RETRIES) {
-                const waitTime = INITIAL_BACKOFF_MS * Math.pow(2.5, attempt);
+            if (isQuotaError && attempt < MAX_RETRIES) {
+                const waitTime = INITIAL_BACKOFF_MS * Math.pow(3, attempt);
+                console.warn(`Grounding quota limit reached. Retrying in ${waitTime}ms...`);
                 await delay(waitTime);
                 continue;
             }
 
             if (attempt === MAX_RETRIES) throw error;
-            await delay(1500);
+            await delay(2000);
         }
     }
-    throw new Error("Batch processing failed.");
+    throw new Error("Processing failed after several attempts.");
 }
 
 export async function generateBookmarkDetails(url: string): Promise<BookmarkResult> {

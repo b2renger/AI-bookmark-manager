@@ -2,15 +2,16 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { UrlInput } from './components/UrlInput';
 import { BookmarkList } from './components/BookmarkList';
 import { Header } from './components/Header';
-import { ApiKeySetup } from './components/ApiKeySetup';
-import { generateBookmarksBatch, ApiKeyError } from './services/geminiService';
+import { generateBookmarksBatch } from './services/geminiService';
 import { Bookmark } from './types';
 import { v4 as uuidv4 } from 'uuid';
 
 const AI_BOOKMARKS_STORAGE_KEY = 'ai-bookmark-manager-bookmarks';
 const THEME_STORAGE_KEY = 'ai-bookmark-manager-theme';
-const BATCH_SIZE = 5; // Efficiently process 5 URLs per call to stay under TPM while reducing RPM
-const BATCH_DELAY_MS = 5000; // 5 seconds wait between batches to safely respect 15 RPM limits
+// Process 1 URL at a time for maximum stability with grounding tools
+const BATCH_SIZE = 1; 
+// Delay to stay safely under 15 RPM
+const BATCH_DELAY_MS = 8000; 
 
 const stripUtmParams = (urlString: string): string => {
   if (!urlString || !urlString.includes('utm_')) return urlString;
@@ -29,7 +30,6 @@ const App: React.FC = () => {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasKey, setHasKey] = useState<boolean | null>(null);
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {
@@ -39,29 +39,6 @@ const App: React.FC = () => {
       return false;
     }
   });
-
-  useEffect(() => {
-    const checkKey = async () => {
-      // @ts-ignore
-      if (window.aistudio?.hasSelectedApiKey) {
-        // @ts-ignore
-        const selected = await window.aistudio.hasSelectedApiKey();
-        setHasKey(selected);
-      } else {
-        setHasKey(true);
-      }
-    };
-    checkKey();
-  }, []);
-
-  const handleSelectKey = async () => {
-    // @ts-ignore
-    if (window.aistudio?.openSelectKey) {
-      // @ts-ignore
-      await window.aistudio.openSelectKey();
-      setHasKey(true); 
-    }
-  };
 
   useEffect(() => {
     const stored = localStorage.getItem(AI_BOOKMARKS_STORAGE_KEY);
@@ -120,14 +97,12 @@ const App: React.FC = () => {
 
     setBookmarks(prev => [...prev, ...newEntries]);
 
-    // Process in Chunks
     for (let i = 0; i < newEntries.length; i += BATCH_SIZE) {
         const chunk = newEntries.slice(i, i + BATCH_SIZE);
         const chunkUrls = chunk.map(b => b.url);
 
-        // Update titles to reflect active processing
         setBookmarks(prev => prev.map(b => 
-            chunk.some(c => c.id === b.id) ? { ...b, title: 'Processing batch...' } : b
+            chunk.some(c => c.id === b.id) ? { ...b, title: 'Analyzing content...' } : b
         ));
 
         try {
@@ -145,7 +120,6 @@ const App: React.FC = () => {
                             summary: res.summary,
                             keywords: res.keywords,
                             sources: res.sources,
-                            // If the AI found a specific publication date, prefer it. Otherwise keep imported date.
                             createdAt: res.publicationDate || next[idx].createdAt,
                             status: isWarning ? 'warning' : 'done',
                         };
@@ -154,20 +128,12 @@ const App: React.FC = () => {
                 return next;
             });
         } catch (e: any) {
-            if (e instanceof ApiKeyError) {
-                setError("API Key Error. Please re-select.");
-                setHasKey(false);
-                setIsLoading(false);
-                return;
-            }
-            
-            const msg = e instanceof Error ? e.message : 'Batch failed';
+            const msg = e instanceof Error ? e.message : 'Analysis failed';
             setBookmarks(prev => prev.map(b => 
                 chunk.some(c => c.id === b.id) ? { ...b, title: 'Error', summary: msg, status: 'error' } : b
             ));
         }
 
-        // Respect RPM quotas
         if (i + BATCH_SIZE < newEntries.length) {
             await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
         }
@@ -208,9 +174,6 @@ const App: React.FC = () => {
         setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'error', summary: e.message } : b));
     }
   }, [bookmarks]);
-
-  if (hasKey === false) return <ApiKeySetup onSelectKey={handleSelectKey} error={error} />;
-  if (hasKey === null) return null;
 
   return (
     <div className="min-h-screen text-slate-800 dark:text-slate-200">
