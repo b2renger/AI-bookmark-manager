@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { UrlInput } from './components/UrlInput';
 import { BookmarkList } from './components/BookmarkList';
 import { Header } from './components/Header';
@@ -8,10 +8,11 @@ import { v4 as uuidv4 } from 'uuid';
 
 const AI_BOOKMARKS_STORAGE_KEY = 'ai-bookmark-manager-bookmarks';
 const THEME_STORAGE_KEY = 'ai-bookmark-manager-theme';
-// Process 1 URL at a time for maximum stability with grounding tools
-const BATCH_SIZE = 1; 
-// Delay to stay safely under 15 RPM
-const BATCH_DELAY_MS = 8000; 
+
+// Safe delay between requests to stay under 15 RPM (approx 1 request every 10s is 6 RPM)
+// This conservative delay helps avoid 429 errors on the free/preview tier.
+const RATE_LIMIT_DELAY_MS = 10000;
+const ERROR_BACKOFF_MS = 30000; // Wait 30s if we hit a 429
 
 const stripUtmParams = (urlString: string): string => {
   if (!urlString || !urlString.includes('utm_')) return urlString;
@@ -28,7 +29,8 @@ const stripUtmParams = (urlString: string): string => {
 
 const App: React.FC = () => {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  // We use this state to lock the queue processing so we only process one item at a time
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -63,10 +65,84 @@ const App: React.FC = () => {
 
   const toggleDarkMode = useCallback(() => setIsDarkMode(prev => !prev), []);
 
+  // Queue Processing Effect
+  // This ensures that we only ever have ONE active API request at a time.
+  useEffect(() => {
+    let mounted = true;
+
+    const processNextItem = async () => {
+        // If already processing, do nothing (wait for lock to release)
+        if (isProcessing) return;
+
+        // Find the next item in the queue
+        const nextItem = bookmarks.find(b => b.status === 'queued');
+        
+        // If queue is empty, we are done
+        if (!nextItem) return;
+
+        // Lock the processor
+        setIsProcessing(true);
+        setError(null);
+
+        // Update UI to show processing state
+        setBookmarks(prev => prev.map(b => 
+            b.id === nextItem.id ? { ...b, status: 'processing', title: 'Analyzing...' } : b
+        ));
+
+        try {
+            // Process the single URL
+            const results = await generateBookmarksBatch([nextItem.url]);
+            const res = results[0];
+            
+            if (mounted) {
+                setBookmarks(prev => prev.map(b => {
+                    if (b.id !== nextItem.id) return b;
+                    
+                    const isWarning = !res.summary || res.summary.length < 10;
+                    return {
+                        ...b,
+                        title: res.title,
+                        summary: res.summary,
+                        keywords: res.keywords,
+                        sources: res.sources,
+                        createdAt: res.publicationDate || b.createdAt,
+                        status: isWarning ? 'warning' : 'done',
+                    };
+                }));
+            }
+
+            // Respect rate limits by waiting before releasing the lock
+            await new Promise(r => setTimeout(r, RATE_LIMIT_DELAY_MS));
+
+        } catch (e: any) {
+            const msg = e instanceof Error ? e.message : 'Analysis failed';
+            console.error(`Error processing ${nextItem.url}:`, msg);
+
+            if (mounted) {
+                setBookmarks(prev => prev.map(b => 
+                    b.id === nextItem.id ? { ...b, title: 'Error', summary: msg, status: 'error' } : b
+                ));
+            }
+
+            // If we hit a rate limit, pause much longer to let the quota bucket drain
+            if (msg.includes('429') || msg.toLowerCase().includes('too many requests')) {
+                await new Promise(r => setTimeout(r, ERROR_BACKOFF_MS));
+            } else {
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        } finally {
+            if (mounted) setIsProcessing(false);
+        }
+    };
+
+    processNextItem();
+
+    return () => { mounted = false; };
+  }, [bookmarks, isProcessing]);
+
   const handleProcessUrls = useCallback(async (urlData: { url: string; addDate?: string }[]) => {
     if (!urlData.length) return;
 
-    setIsLoading(true);
     setError(null);
 
     const existingUrls = new Set(bookmarks.filter(b => b.status !== 'error').map(b => b.url));
@@ -80,66 +156,20 @@ const App: React.FC = () => {
         }
     }
 
-    if (uniqueBatch.length === 0) {
-      setIsLoading(false);
-      return;
-    }
+    if (uniqueBatch.length === 0) return;
 
+    // Add new items with 'queued' status. The useEffect above will pick them up.
     const newEntries: Bookmark[] = uniqueBatch.map(data => ({
       id: uuidv4(),
       url: data.url,
-      title: 'Queued...',
-      summary: '',
+      title: 'Queued',
+      summary: 'Waiting for analysis...',
       keywords: [],
-      status: 'processing',
+      status: 'queued',
       createdAt: data.addDate || new Date().toISOString(),
     }));
 
     setBookmarks(prev => [...prev, ...newEntries]);
-
-    for (let i = 0; i < newEntries.length; i += BATCH_SIZE) {
-        const chunk = newEntries.slice(i, i + BATCH_SIZE);
-        const chunkUrls = chunk.map(b => b.url);
-
-        setBookmarks(prev => prev.map(b => 
-            chunk.some(c => c.id === b.id) ? { ...b, title: 'Analyzing content...' } : b
-        ));
-
-        try {
-            const results = await generateBookmarksBatch(chunkUrls);
-            
-            setBookmarks(prev => {
-                const next = [...prev];
-                results.forEach(res => {
-                    const idx = next.findIndex(b => b.url === res.url && b.status === 'processing');
-                    if (idx !== -1) {
-                        const isWarning = !res.summary || res.summary.length < 10;
-                        next[idx] = {
-                            ...next[idx],
-                            title: res.title,
-                            summary: res.summary,
-                            keywords: res.keywords,
-                            sources: res.sources,
-                            createdAt: res.publicationDate || next[idx].createdAt,
-                            status: isWarning ? 'warning' : 'done',
-                        };
-                    }
-                });
-                return next;
-            });
-        } catch (e: any) {
-            const msg = e instanceof Error ? e.message : 'Analysis failed';
-            setBookmarks(prev => prev.map(b => 
-                chunk.some(c => c.id === b.id) ? { ...b, title: 'Error', summary: msg, status: 'error' } : b
-            ));
-        }
-
-        if (i + BATCH_SIZE < newEntries.length) {
-            await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
-        }
-    }
-    
-    setIsLoading(false);
   }, [bookmarks]);
 
   const handleUpdateBookmark = useCallback((updated: Bookmark) => {
@@ -152,35 +182,22 @@ const App: React.FC = () => {
   
   const handleClearAll = useCallback(() => setBookmarks([]), []);
 
-  const handleRetryBookmark = useCallback(async (id: string) => {
-    const target = bookmarks.find(b => b.id === id);
-    if (!target) return;
+  const handleRetryBookmark = useCallback((id: string) => {
+    // To retry, we simply set the status back to 'queued'
+    setBookmarks(prev => prev.map(b => 
+        b.id === id ? { ...b, status: 'queued', title: 'Queued', summary: 'Waiting for retry...' } : b
+    ));
+  }, []);
 
-    setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'processing', title: 'Retrying...' } : b));
-    
-    try {
-        const result = await generateBookmarksBatch([target.url]);
-        const res = result[0];
-        setBookmarks(prev => prev.map(b => b.id === id ? {
-            ...b,
-            title: res.title,
-            summary: res.summary,
-            keywords: res.keywords,
-            sources: res.sources,
-            createdAt: res.publicationDate || b.createdAt,
-            status: (!res.summary || res.summary.length < 10) ? 'warning' : 'done'
-        } : b));
-    } catch (e: any) {
-        setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'error', summary: e.message } : b));
-    }
-  }, [bookmarks]);
+  // Check if anything is queued or processing
+  const isGlobalLoading = bookmarks.some(b => b.status === 'queued' || b.status === 'processing');
 
   return (
     <div className="min-h-screen text-slate-800 dark:text-slate-200">
       <Header bookmarks={bookmarks} onClearAll={handleClearAll} isDarkMode={isDarkMode} onToggleDarkMode={toggleDarkMode} />
       <main className="container mx-auto p-4 md:p-8">
         <div className="max-w-4xl mx-auto">
-          <UrlInput onProcess={handleProcessUrls} isLoading={isLoading} />
+          <UrlInput onProcess={handleProcessUrls} isLoading={isGlobalLoading} />
           {error && <div className="mt-4 text-center text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-lg">{error}</div>}
           <BookmarkList bookmarks={bookmarks} onUpdate={handleUpdateBookmark} onDelete={handleDeleteBookmark} onRetry={handleRetryBookmark} />
         </div>

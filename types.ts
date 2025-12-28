@@ -5,7 +5,7 @@ export interface Bookmark {
   title: string;
   summary: string;
   keywords: string[];
-  status: 'processing' | 'done' | 'error' | 'warning';
+  status: 'queued' | 'processing' | 'done' | 'error' | 'warning';
   createdAt: string; // ISO date string
   sources?: { uri: string; title: string }[];
 }
