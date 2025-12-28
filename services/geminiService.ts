@@ -47,8 +47,17 @@ export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkRe
             1. Use the search tool to find the actual page content and metadata.
             2. Extract a clear title and a 2-sentence informative summary.
             3. Identify 3-5 specific keywords.
-            4. SEARCH FOR THE ORIGINAL PUBLICATION DATE. If the page is an article, news piece, or blog post, find when it was originally published.
-            5. Return the publication date strictly in ISO 8601 format (YYYY-MM-DD). If no clear publication date is found, return null.
+
+            
+            SPECIAL HANDLING FOR TWITTER/X LINKS:
+            - If the URL is from twitter.com or x.com, it is a social media post.
+            - TITLE: Format as "Post by [Username] (@handle)".
+            - SUMMARY: The summary MUST be the literal content or a highly accurate description of the specific tweet's text and media. Do not provide a generic site description.
+            - KEYWORDS: Extract any hashtags present in the tweet and use them as keywords. Add other relevant topical keywords.
+            
+            GENERAL INSTRUCTIONS:
+            - SEARCH FOR THE ORIGINAL PUBLICATION DATE. For articles or tweets, find when it was originally posted.
+            - Return the publication date strictly in ISO 8601 format (YYYY-MM-DD). If no clear date is found, return null.
             
             Format your response as a valid JSON array of objects.
             JSON structure:
@@ -67,7 +76,7 @@ export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkRe
                 model: "gemini-3-flash-preview",
                 contents: prompt,
                 config: {
-                    tools: [{ googleSearch: {} }],
+                   // tools: [{ googleSearch: {} }],
                     temperature: 0.2,
                     responseMimeType: "application/json"
                 }
