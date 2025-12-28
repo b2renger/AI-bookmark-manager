@@ -17,7 +17,8 @@ export interface BookmarkResult {
 }
 
 /**
- * Generates details for a batch of URLs using the url_context tool.
+ * Generates details for a batch of URLs.
+ * Dynamically selects between url_context (direct retrieval) and googleSearch (for social media/blocked sites).
  */
 export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkResult[]> {
     if (!process.env.API_KEY) {
@@ -26,38 +27,69 @@ export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkRe
 
     if (urls.length === 0) return [];
     
+    // Detect if the batch contains Twitter/X links which often block direct scraping/retrieval
+    const isTwitterBatch = urls.some(u => 
+        u.toLowerCase().includes('twitter.com') || 
+        u.toLowerCase().includes('x.com')
+    );
+
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
-            // Prepare links for the url_context tool
-            const urlContextLinks = urls.map(url => ({ url }));
+            let tools: any[];
+            let strategyPrompt: string;
+
+            if (isTwitterBatch) {
+                // Strategy A: Google Search for Twitter/X (bypassing login walls via search index)
+                tools = [{ googleSearch: {} }];
+                strategyPrompt = `
+                You are analyzing Twitter/X posts.
+                
+                TARGET URLs:
+                ${urls.map((url, i) => `${i + 1}. ${url}`).join('\n')}
+                
+                INSTRUCTIONS:
+                1. Use Google Search to find the specific content of these tweets/posts. 
+                2. Do NOT guess or hallucinate. If you cannot find the text in the search snippets, return a summary stating "Content unavailable".
+                3. Transcription: The summary must be the actual text of the post.
+                4. Title: "Tweet by [Author Name/Handle]".
+                `;
+            } else {
+                // Strategy B: url_context for standard websites
+                const urlContextLinks = urls.map(url => ({ url }));
+                tools = [{ 
+                    // @ts-ignore
+                    url_context: { links: urlContextLinks } 
+                }];
+                strategyPrompt = `
+                You are analyzing standard web pages.
+                
+                TARGET URLs:
+                ${urls.map((url, i) => `${i + 1}. ${url}`).join('\n')}
+                
+                INSTRUCTIONS:
+                1. Use the url_context tool to read the live page content.
+                2. If the tool returns no content (e.g., blocked), return "Content unavailable".
+                3. Summary: A 2-sentence overview.
+                4. Title: The actual HTML page title.
+                `;
+            }
 
             const prompt = `
-            Analyze these URLs using the url_context tool to fetch their actual live content.
+            ${strategyPrompt}
             
-            Requested URLs:
-            ${urls.map((url, i) => `${i + 1}. ${url}`).join('\n')}
+            COMMON OUTPUT REQUIREMENTS:
+            - Identify 3-5 keywords (hashtags for tweets).
+            - Find publication date (YYYY-MM-DD).
             
-            For each URL:
-            1. Extract the main headline or page title.
-            2. Write a 2-sentence summary of the core content.
-            3. Identify 3-5 relevant keywords.
-            4. Find the publication date (YYYY-MM-DD format).
-
-            IF IT IS A TWEET/X POST:
-            - Transcription: You MUST transcribe the tweet text exactly as it appears.
-            - Title: Set title to "Tweet by [User] (@handle)".
-            - Keywords: Use all hashtags present in the tweet.
-
-            Return your response ONLY as a JSON array of objects.
-            JSON Format Example:
+            Return ONLY a JSON array:
             [
               {
                 "url": "input_url",
-                "title": "Title Here",
-                "summary": "Summary here...",
-                "keywords": ["kw1", "kw2"],
+                "title": "Title",
+                "summary": "Content...",
+                "keywords": ["tag1"],
                 "publicationDate": "YYYY-MM-DD"
               }
             ]
@@ -67,11 +99,7 @@ export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkRe
                 model: "gemini-3-flash-preview",
                 contents: prompt,
                 config: {
-                    // Correct implementation of the url_context tool
-                    tools: [{ 
-                        // @ts-ignore
-                        url_context: {} 
-                    }],
+                    tools: tools,
                     temperature: 0.1,
                     responseMimeType: "application/json"
                 }
@@ -96,7 +124,7 @@ export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkRe
                 results = JSON.parse(responseText.trim());
             } catch (e) {
                 console.error("JSON Parse Error:", responseText);
-                throw new Error("Failed to parse analysis results. The page might be protected or too complex.");
+                throw new Error("Failed to parse analysis results.");
             }
 
             return urls.map(originalUrl => {
@@ -129,7 +157,7 @@ export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkRe
 
             if (isQuotaError && attempt < MAX_RETRIES) {
                 const waitTime = INITIAL_BACKOFF_MS * Math.pow(3, attempt);
-                console.warn(`Grounding quota limit reached. Retrying in ${waitTime}ms...`);
+                console.warn(`Quota limit reached. Retrying in ${waitTime}ms...`);
                 await delay(waitTime);
                 continue;
             }
