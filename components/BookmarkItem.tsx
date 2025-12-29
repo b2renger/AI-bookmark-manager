@@ -120,16 +120,14 @@ export const BookmarkItem: React.FC<BookmarkItemProps> = ({ bookmark, onUpdate, 
       }
   };
 
-  const isPending = bookmark.status === 'processing' || bookmark.status === 'queued';
-  const isQueued = bookmark.status === 'queued';
 
   return (
-    <div className={`bg-white dark:bg-slate-800 p-5 rounded-xl shadow-md transition-all animate-fade-in ${bookmark.status === 'warning' ? 'ring-2 ring-amber-500' : ''} ${isQueued ? 'opacity-70 grayscale-[0.5]' : ''}`} aria-live="polite">
+    <div className={`bg-white dark:bg-slate-800 p-5 rounded-xl shadow-md transition-all animate-fade-in ${bookmark.status === 'warning' ? 'ring-2 ring-amber-500' : ''}`} aria-live="polite">
       <div className="flex justify-between items-start">
         <div className="flex-1 pr-4">
           <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-1 flex items-center gap-1">
-            {isPending ? (
-                <span className="text-slate-500 italic">{bookmark.title}</span>
+            {bookmark.status === 'processing' ? (
+                <span className="text-slate-500">{bookmark.title}</span>
             ) : (
                 <>
                     <EditableField value={bookmark.title} onSave={handleTitleUpdate} />
@@ -155,8 +153,6 @@ export const BookmarkItem: React.FC<BookmarkItemProps> = ({ bookmark, onUpdate, 
         </div>
         <div className="flex items-center space-x-2">
             {bookmark.status === 'processing' && <Spinner />}
-            {bookmark.status === 'queued' && <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-full">Waiting...</span>}
-            
              <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="p-2 text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors" title="Open link">
                 <ExternalLinkIcon />
             </a>
@@ -166,7 +162,7 @@ export const BookmarkItem: React.FC<BookmarkItemProps> = ({ bookmark, onUpdate, 
         </div>
       </div>
 
-      {!isPending && (
+      {bookmark.status !== 'processing' && (
         <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
            {bookmark.status === 'error' ? (
                 <div className="text-red-500 bg-red-50 dark:bg-red-900/40 p-3 rounded-md" role="alert">
@@ -216,6 +212,7 @@ export const BookmarkItem: React.FC<BookmarkItemProps> = ({ bookmark, onUpdate, 
                             <EditableField value={bookmark.summary} onSave={handleSummaryUpdate} isTextArea />
                         </p>
                     </div>
+                    {/* Fix: Display sources if they exist */}
                     {bookmark.sources && bookmark.sources.length > 0 && (
                         <div className="mt-4">
                             <label className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">
