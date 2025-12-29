@@ -1,17 +1,17 @@
-
 import React from 'react';
 import { Bookmark } from '../types';
 import { ExportButton } from './ExportButton';
-import { ClearIcon, MoonIcon, SunIcon } from './common/Icons';
+import { ClearIcon, MoonIcon, SunIcon, CogIcon } from './common/Icons';
 
 interface HeaderProps {
     bookmarks: Bookmark[];
     onClearAll: () => void;
     isDarkMode: boolean;
     onToggleDarkMode: () => void;
+    onOpenSettings: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ bookmarks, onClearAll, isDarkMode, onToggleDarkMode }) => {
+export const Header: React.FC<HeaderProps> = ({ bookmarks, onClearAll, isDarkMode, onToggleDarkMode, onOpenSettings }) => {
     const downloadableBookmarks = bookmarks.filter(b => b.status === 'done' || b.status === 'warning');
     
     return (
@@ -32,6 +32,14 @@ export const Header: React.FC<HeaderProps> = ({ bookmarks, onClearAll, isDarkMod
                         </button>
                     )}
                     <ExportButton bookmarks={downloadableBookmarks} />
+                    <button
+                        onClick={onOpenSettings}
+                        className="p-2 text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-md transition-colors"
+                        aria-label="Settings"
+                        title="Settings"
+                    >
+                        <CogIcon className="h-5 w-5" />
+                    </button>
                     <button
                         onClick={onToggleDarkMode}
                         className="p-2 text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-md transition-colors"

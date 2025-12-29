@@ -24,27 +24,86 @@ export interface BookmarkResult {
     sources: { uri: string; title: string }[] 
 }
 
+// Helper to fetch tweet content via API or oEmbed
+async function fetchTweetContext(url: string, apiKey?: string): Promise<string | null> {
+    const tweetIdMatch = url.match(/(?:twitter\.com|x\.com)\/(?:#!\/)?(\w+)\/status\/(\d+)/);
+    if (!tweetIdMatch) return null;
+    const tweetId = tweetIdMatch[2];
+
+    // Try API if key is present
+    if (apiKey) {
+        try {
+            // Note: This often fails in browser due to CORS unless proxy/extension is used
+            const res = await fetch(`https://api.twitter.com/2/tweets/${tweetId}?tweet.fields=text,created_at,author_id`, {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                return `Tweet content: "${data.data.text}" (Posted: ${data.data.created_at})`;
+            } else {
+                console.warn(`Twitter API returned status ${res.status}, falling back.`);
+            }
+        } catch (e) {
+            console.warn("Twitter API fetch failed (likely CORS), falling back to oEmbed", e);
+        }
+    }
+
+    // Fallback to oEmbed (Robust for public tweets)
+    try {
+        const oembedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`;
+        const res = await fetch(oembedUrl);
+        if (res.ok) {
+            const data = await res.json();
+            // Clean up HTML tags from the blockquote to get raw text
+            if (data.html) {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = data.html;
+                const text = tempDiv.textContent || tempDiv.innerText || "";
+                return `Tweet content (via oEmbed): "${text.replace(/\n+/g, ' ').trim()}"`;
+            }
+        }
+    } catch (e) {
+        console.warn("Twitter oEmbed failed", e);
+    }
+
+    return null;
+}
+
 /**
  * Generates details for a batch of URLs in a single API call to optimize quota usage.
  * Processes multiple URLs simultaneously to stay within RPM/RPD limits.
  */
-export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkResult[]> {
+export async function generateBookmarksBatch(urls: string[], xApiKey?: string): Promise<BookmarkResult[]> {
     if (!process.env.API_KEY) {
         throw new ApiKeyError("API_KEY environment variable is not set.");
     }
 
     if (urls.length === 0) return [];
     
+    // Pre-fetch contexts for X/Twitter URLs
+    const contexts = await Promise.all(urls.map(async (url) => {
+        if (url.includes('twitter.com') || url.includes('x.com')) {
+            return await fetchTweetContext(url, xApiKey);
+        }
+        return null;
+    }));
+
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
             const prompt = `
             Analyze the following list of URLs and provide detailed summaries:
-            ${urls.map((url, i) => `${i + 1}. ${url}`).join('\n')}
+            ${urls.map((url, i) => {
+                const ctx = contexts[i];
+                return `${i + 1}. ${url}${ctx ? `\n   [Additional Context Retrieved]: ${ctx}` : ''}`;
+            }).join('\n')}
             
             Instructions for EACH URL:
-            1. Use the search tool to find the actual page content and metadata.
+            1. Use the search tool to find the actual page content and metadata. 
+               IF Additional Context is provided above for a URL (e.g. Tweet content), PRIORTIZE using that context for the summary.
             2. Extract a clear title and a 2-sentence informative summary.
             3. Identify 3-5 specific keywords.
             4. SEARCH FOR THE ORIGINAL PUBLICATION DATE. If the page is an article, news piece, or blog post, find when it was originally published.
@@ -148,7 +207,7 @@ export async function generateBookmarksBatch(urls: string[]): Promise<BookmarkRe
     throw new Error("Batch processing failed.");
 }
 
-export async function generateBookmarkDetails(url: string): Promise<BookmarkResult> {
-    const results = await generateBookmarksBatch([url]);
+export async function generateBookmarkDetails(url: string, xApiKey?: string): Promise<BookmarkResult> {
+    const results = await generateBookmarksBatch([url], xApiKey);
     return results[0];
 }

@@ -2,12 +2,14 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { UrlInput } from './components/UrlInput';
 import { BookmarkList } from './components/BookmarkList';
 import { Header } from './components/Header';
+import { SettingsModal } from './components/SettingsModal';
 import { generateBookmarksBatch, ApiKeyError } from './services/geminiService';
 import { Bookmark } from './types';
 import { v4 as uuidv4 } from 'uuid';
 
 const AI_BOOKMARKS_STORAGE_KEY = 'ai-bookmark-manager-bookmarks';
 const THEME_STORAGE_KEY = 'ai-bookmark-manager-theme';
+const X_API_KEY_STORAGE_KEY = 'ai-bookmark-manager-x-api-key';
 const BATCH_SIZE = 5; // Efficiently process 5 URLs per call to stay under TPM while reducing RPM
 const BATCH_DELAY_MS = 5000; // 5 seconds wait between batches to safely respect 15 RPM limits
 
@@ -28,6 +30,8 @@ const App: React.FC = () => {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [xApiKey, setXApiKey] = useState<string>('');
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {
@@ -48,6 +52,10 @@ const App: React.FC = () => {
         localStorage.removeItem(AI_BOOKMARKS_STORAGE_KEY);
       }
     }
+    const storedXKey = localStorage.getItem(X_API_KEY_STORAGE_KEY);
+    if (storedXKey) {
+        setXApiKey(storedXKey);
+    }
   }, []);
 
   useEffect(() => {
@@ -61,6 +69,11 @@ const App: React.FC = () => {
   }, [isDarkMode]);
 
   const toggleDarkMode = useCallback(() => setIsDarkMode(prev => !prev), []);
+
+  const handleSaveXApiKey = useCallback((key: string) => {
+    setXApiKey(key);
+    localStorage.setItem(X_API_KEY_STORAGE_KEY, key);
+  }, []);
 
   const handleProcessUrls = useCallback(async (urlData: { url: string; addDate?: string }[]) => {
     if (!urlData.length) return;
@@ -107,7 +120,7 @@ const App: React.FC = () => {
         ));
 
         try {
-            const results = await generateBookmarksBatch(chunkUrls);
+            const results = await generateBookmarksBatch(chunkUrls, xApiKey);
             
             setBookmarks(prev => {
                 const next = [...prev];
@@ -149,7 +162,7 @@ const App: React.FC = () => {
     }
     
     setIsLoading(false);
-  }, [bookmarks]);
+  }, [bookmarks, xApiKey]);
 
   const handleUpdateBookmark = useCallback((updated: Bookmark) => {
     setBookmarks(prev => prev.map(b => (b.id === updated.id ? updated : b)));
@@ -168,7 +181,7 @@ const App: React.FC = () => {
     setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'processing', title: 'Retrying...' } : b));
     
     try {
-        const result = await generateBookmarksBatch([target.url]);
+        const result = await generateBookmarksBatch([target.url], xApiKey);
         const res = result[0];
         setBookmarks(prev => prev.map(b => b.id === id ? {
             ...b,
@@ -182,11 +195,17 @@ const App: React.FC = () => {
     } catch (e: any) {
         setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'error', summary: e.message } : b));
     }
-  }, [bookmarks]);
+  }, [bookmarks, xApiKey]);
 
   return (
     <div className="min-h-screen text-slate-800 dark:text-slate-200">
-      <Header bookmarks={bookmarks} onClearAll={handleClearAll} isDarkMode={isDarkMode} onToggleDarkMode={toggleDarkMode} />
+      <Header 
+        bookmarks={bookmarks} 
+        onClearAll={handleClearAll} 
+        isDarkMode={isDarkMode} 
+        onToggleDarkMode={toggleDarkMode}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
       <main className="container mx-auto p-4 md:p-8">
         <div className="max-w-4xl mx-auto">
           <UrlInput onProcess={handleProcessUrls} isLoading={isLoading} />
@@ -194,6 +213,12 @@ const App: React.FC = () => {
           <BookmarkList bookmarks={bookmarks} onUpdate={handleUpdateBookmark} onDelete={handleDeleteBookmark} onRetry={handleRetryBookmark} />
         </div>
       </main>
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+        xApiKey={xApiKey} 
+        onSaveXApiKey={handleSaveXApiKey} 
+      />
     </div>
   );
 };
