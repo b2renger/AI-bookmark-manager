@@ -9,3 +9,15 @@ export interface Bookmark {
   createdAt: string; // ISO date string
   sources?: { uri: string; title: string }[];
 }
+
+export interface NotionDatabase {
+  id: string;
+  title: string;
+  url: string;
+  properties: Record<string, any>;
+}
+
+export interface NotionConfig {
+  apiKey: string;
+  proxyUrl: string;
+}

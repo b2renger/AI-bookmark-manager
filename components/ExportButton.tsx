@@ -4,9 +4,10 @@ import { DownloadIcon } from './common/Icons';
 
 interface ExportButtonProps {
   bookmarks: Bookmark[];
+  onOpenNotionSync: () => void;
 }
 
-export const ExportButton: React.FC<ExportButtonProps> = ({ bookmarks }) => {
+export const ExportButton: React.FC<ExportButtonProps> = ({ bookmarks, onOpenNotionSync }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -215,12 +216,12 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ bookmarks }) => {
         onClick={() => setIsOpen(!isOpen)}
         disabled={bookmarks.length === 0}
         className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition-colors disabled:bg-slate-400 dark:disabled:bg-slate-600 disabled:cursor-not-allowed"
-        title="Export bookmarks"
+        title="Export options"
         aria-haspopup="true"
         aria-expanded={isOpen}
       >
         <DownloadIcon className="h-4 w-4" />
-        <span className="hidden sm:inline">Export</span>
+        <span className="hidden sm:inline">Export / Sync</span>
         <svg className={`-mr-1 h-5 w-5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
           <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
         </svg>
@@ -228,36 +229,48 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ bookmarks }) => {
 
       {isOpen && (
         <div 
-          className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white dark:bg-slate-700 ring-1 ring-black ring-opacity-5 focus:outline-none z-20"
+          className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white dark:bg-slate-700 ring-1 ring-black ring-opacity-5 focus:outline-none z-20"
           role="menu" 
           aria-orientation="vertical" 
           aria-labelledby="export-menu-button"
         >
           <div className="py-1" role="none">
+            {/* Notion Integration Option */}
+             <button
+              onClick={() => {
+                  setIsOpen(false);
+                  onOpenNotionSync();
+              }}
+              className="flex items-center w-full text-left px-4 py-3 text-sm font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-600 border-b border-slate-200 dark:border-slate-600"
+              role="menuitem"
+            >
+              <span className="mr-2">N</span> Sync to Notion
+            </button>
+
             <button
               onClick={handleExportJson}
-              className="block w-full text-left px-4 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-600"
+              className="block w-full text-left px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600"
               role="menuitem"
             >
               As JSON file
             </button>
             <button
               onClick={handleExportCsv}
-              className="block w-full text-left px-4 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-600"
+              className="block w-full text-left px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600"
               role="menuitem"
             >
               As CSV file
             </button>
              <button
               onClick={handleExportMarkdown}
-              className="block w-full text-left px-4 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-600"
+              className="block w-full text-left px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600"
               role="menuitem"
             >
               As Markdown file
             </button>
             <button
               onClick={handleExportHtmlFile}
-              className="block w-full text-left px-4 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-600"
+              className="block w-full text-left px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600"
               role="menuitem"
             >
               As HTML file

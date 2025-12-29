@@ -3,6 +3,7 @@ import { UrlInput } from './components/UrlInput';
 import { BookmarkList } from './components/BookmarkList';
 import { Header } from './components/Header';
 import { SettingsModal } from './components/SettingsModal';
+import { NotionSyncModal } from './components/NotionSyncModal';
 import { generateBookmarksBatch, ApiKeyError } from './services/geminiService';
 import { Bookmark } from './types';
 import { v4 as uuidv4 } from 'uuid';
@@ -10,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 const AI_BOOKMARKS_STORAGE_KEY = 'ai-bookmark-manager-bookmarks';
 const THEME_STORAGE_KEY = 'ai-bookmark-manager-theme';
 const X_API_KEY_STORAGE_KEY = 'ai-bookmark-manager-x-api-key';
+const NOTION_CONFIG_STORAGE_KEY = 'ai-bookmark-manager-notion-config';
 const BATCH_SIZE = 5; // Efficiently process 5 URLs per call to stay under TPM while reducing RPM
 const BATCH_DELAY_MS = 5000; // 5 seconds wait between batches to safely respect 15 RPM limits
 
@@ -30,8 +32,17 @@ const App: React.FC = () => {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Modal States
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isNotionSyncOpen, setIsNotionSyncOpen] = useState(false);
+
+  // Settings
   const [xApiKey, setXApiKey] = useState<string>('');
+  const [notionConfig, setNotionConfig] = useState<{ apiKey: string; proxyUrl: string }>({ 
+    apiKey: '', 
+    proxyUrl: 'https://corsproxy.io/?' 
+  });
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {
@@ -56,6 +67,14 @@ const App: React.FC = () => {
     if (storedXKey) {
         setXApiKey(storedXKey);
     }
+    const storedNotionConfig = localStorage.getItem(NOTION_CONFIG_STORAGE_KEY);
+    if (storedNotionConfig) {
+        try {
+            setNotionConfig(JSON.parse(storedNotionConfig));
+        } catch (e) {
+             // reset if corrupted
+        }
+    }
   }, []);
 
   useEffect(() => {
@@ -73,6 +92,11 @@ const App: React.FC = () => {
   const handleSaveXApiKey = useCallback((key: string) => {
     setXApiKey(key);
     localStorage.setItem(X_API_KEY_STORAGE_KEY, key);
+  }, []);
+
+  const handleSaveNotionConfig = useCallback((config: { apiKey: string; proxyUrl: string }) => {
+    setNotionConfig(config);
+    localStorage.setItem(NOTION_CONFIG_STORAGE_KEY, JSON.stringify(config));
   }, []);
 
   const handleProcessUrls = useCallback(async (urlData: { url: string; addDate?: string }[]) => {
@@ -205,6 +229,7 @@ const App: React.FC = () => {
         isDarkMode={isDarkMode} 
         onToggleDarkMode={toggleDarkMode}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenNotionSync={() => setIsNotionSyncOpen(true)}
       />
       <main className="container mx-auto p-4 md:p-8">
         <div className="max-w-4xl mx-auto">
@@ -213,11 +238,25 @@ const App: React.FC = () => {
           <BookmarkList bookmarks={bookmarks} onUpdate={handleUpdateBookmark} onDelete={handleDeleteBookmark} onRetry={handleRetryBookmark} />
         </div>
       </main>
+      
       <SettingsModal 
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
         xApiKey={xApiKey} 
-        onSaveXApiKey={handleSaveXApiKey} 
+        onSaveXApiKey={handleSaveXApiKey}
+        notionConfig={notionConfig}
+        onSaveNotionConfig={handleSaveNotionConfig}
+      />
+
+      <NotionSyncModal 
+        isOpen={isNotionSyncOpen}
+        onClose={() => setIsNotionSyncOpen(false)}
+        bookmarks={bookmarks.filter(b => b.status === 'done' || b.status === 'warning')}
+        notionConfig={notionConfig}
+        onOpenSettings={() => {
+            setIsNotionSyncOpen(false);
+            setIsSettingsOpen(true);
+        }}
       />
     </div>
   );
