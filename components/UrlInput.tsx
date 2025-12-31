@@ -63,6 +63,22 @@ export const UrlInput: React.FC<UrlInputProps> = ({ onProcess, isLoading, onOpen
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
           Paste one URL per line or the content of a bookmarks HTML file. The AI will generate a title, summary, and keywords for each.
         </p>
+
+        <div className="mb-4 bg-blue-50 dark:bg-slate-700/50 rounded-lg p-4 border border-blue-100 dark:border-slate-600 flex items-start gap-3">
+             <div className="text-blue-500 dark:text-blue-400 mt-0.5">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+             </div>
+             <div className="text-xs text-slate-600 dark:text-slate-300">
+                <p className="font-semibold text-slate-800 dark:text-slate-200 mb-1">Integration Setup</p>
+                <p>
+                    To generate summaries for <strong>X (Twitter)</strong> posts or to sync your bookmarks with a <strong>Notion</strong> database, 
+                    please ensure you have configured your tokens in the <button type="button" onClick={onOpenSettings} className="text-blue-600 dark:text-blue-400 hover:underline font-medium inline-flex items-center">Settings</button>.
+                </p>
+             </div>
+        </div>
+
         <textarea
           id="url-input"
           value={text}
@@ -87,21 +103,6 @@ export const UrlInput: React.FC<UrlInputProps> = ({ onProcess, isLoading, onOpen
           )}
         </button>
       </form>
-
-      <div className="mt-6 bg-blue-50 dark:bg-slate-700/50 rounded-lg p-4 border border-blue-100 dark:border-slate-600 flex items-start gap-3">
-         <div className="text-blue-500 dark:text-blue-400 mt-0.5">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-            </svg>
-         </div>
-         <div className="text-xs text-slate-600 dark:text-slate-300">
-            <p className="font-semibold text-slate-800 dark:text-slate-200 mb-1">Integration Setup</p>
-            <p>
-                To generate summaries for <strong>X (Twitter)</strong> posts or to sync your bookmarks with a <strong>Notion</strong> database, 
-                please ensure you have configured your tokens in the <button type="button" onClick={onOpenSettings} className="text-blue-600 dark:text-blue-400 hover:underline font-medium inline-flex items-center">Settings</button>.
-            </p>
-         </div>
-      </div>
     </div>
   );
 };
