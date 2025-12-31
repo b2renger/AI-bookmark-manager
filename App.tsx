@@ -144,7 +144,8 @@ const App: React.FC = () => {
         ));
 
         try {
-            const results = await generateBookmarksBatch(chunkUrls, xApiKey);
+            // Pass proxyUrl to allow fetching youtube details
+            const results = await generateBookmarksBatch(chunkUrls, xApiKey, notionConfig.proxyUrl);
             
             setBookmarks(prev => {
                 const next = [...prev];
@@ -186,7 +187,7 @@ const App: React.FC = () => {
     }
     
     setIsLoading(false);
-  }, [bookmarks, xApiKey]);
+  }, [bookmarks, xApiKey, notionConfig.proxyUrl]);
 
   const handleUpdateBookmark = useCallback((updated: Bookmark) => {
     setBookmarks(prev => prev.map(b => (b.id === updated.id ? updated : b)));
@@ -205,7 +206,7 @@ const App: React.FC = () => {
     setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'processing', title: 'Retrying...' } : b));
     
     try {
-        const result = await generateBookmarksBatch([target.url], xApiKey);
+        const result = await generateBookmarksBatch([target.url], xApiKey, notionConfig.proxyUrl);
         const res = result[0];
         setBookmarks(prev => prev.map(b => b.id === id ? {
             ...b,
@@ -219,7 +220,7 @@ const App: React.FC = () => {
     } catch (e: any) {
         setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'error', summary: e.message } : b));
     }
-  }, [bookmarks, xApiKey]);
+  }, [bookmarks, xApiKey, notionConfig.proxyUrl]);
 
   return (
     <div className="min-h-screen text-slate-800 dark:text-slate-200">
@@ -233,7 +234,7 @@ const App: React.FC = () => {
       />
       <main className="container mx-auto p-4 md:p-8">
         <div className="max-w-4xl mx-auto">
-          <UrlInput onProcess={handleProcessUrls} isLoading={isLoading} />
+          <UrlInput onProcess={handleProcessUrls} isLoading={isLoading} onOpenSettings={() => setIsSettingsOpen(true)} />
           {error && <div className="mt-4 text-center text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-lg">{error}</div>}
           <BookmarkList bookmarks={bookmarks} onUpdate={handleUpdateBookmark} onDelete={handleDeleteBookmark} onRetry={handleRetryBookmark} />
         </div>

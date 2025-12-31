@@ -71,21 +71,57 @@ async function fetchTweetContext(url: string, apiKey?: string): Promise<string |
     return null;
 }
 
+// Helper to fetch youtube content details via proxy
+async function fetchYouTubeContext(url: string, proxyUrl?: string): Promise<string | null> {
+    const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+    const match = url.match(regExp);
+    const videoId = (match && match[7].length === 11) ? match[7] : false;
+    
+    if (!videoId) return null;
+
+    // Use proxy if available to fetch the page HTML and extract meta description
+    if (proxyUrl) {
+        const targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        const fetchUrl = `${proxyUrl}${encodeURIComponent(targetUrl)}`;
+        try {
+            const res = await fetch(fetchUrl);
+            if (res.ok) {
+                const html = await res.text();
+                const descMatch = html.match(/<meta name="description" content="([^"]*)"/);
+                const titleMatch = html.match(/<meta name="title" content="([^"]*)"/);
+                
+                const title = titleMatch ? titleMatch[1] : '';
+                const desc = descMatch ? descMatch[1] : '';
+                
+                if (title || desc) {
+                     return `YouTube Video Details:\nTitle: ${title}\nDescription: ${desc}`;
+                }
+            }
+        } catch (e) {
+            console.warn("YouTube proxy fetch failed, relying on Google Search tool", e);
+        }
+    }
+    return null;
+}
+
 /**
  * Generates details for a batch of URLs in a single API call to optimize quota usage.
  * Processes multiple URLs simultaneously to stay within RPM/RPD limits.
  */
-export async function generateBookmarksBatch(urls: string[], xApiKey?: string): Promise<BookmarkResult[]> {
+export async function generateBookmarksBatch(urls: string[], xApiKey?: string, proxyUrl?: string): Promise<BookmarkResult[]> {
     if (!process.env.API_KEY) {
         throw new ApiKeyError("API_KEY environment variable is not set.");
     }
 
     if (urls.length === 0) return [];
     
-    // Pre-fetch contexts for X/Twitter URLs
+    // Pre-fetch contexts for X/Twitter and YouTube URLs
     const contexts = await Promise.all(urls.map(async (url) => {
         if (url.includes('twitter.com') || url.includes('x.com')) {
             return await fetchTweetContext(url, xApiKey);
+        }
+        if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            return await fetchYouTubeContext(url, proxyUrl);
         }
         return null;
     }));
@@ -103,10 +139,11 @@ export async function generateBookmarksBatch(urls: string[], xApiKey?: string): 
             
             Instructions for EACH URL:
             1. Use the search tool to find the actual page content and metadata. 
-               IF Additional Context is provided above for a URL (e.g. Tweet content), PRIORTIZE using that context for the summary.
+               - IF Additional Context is provided above for a URL (e.g. Tweet content, YouTube description), PRIORTIZE using that context for the summary.
+               - For YouTube videos, specifically read the VIDEO DESCRIPTION and use it to generate the summary.
             2. Extract a clear title and a 2-sentence informative summary.
             3. Identify 3-5 specific keywords.
-            4. SEARCH FOR THE ORIGINAL PUBLICATION DATE. If the page is an article, news piece, or blog post, find when it was originally published.
+            4. SEARCH FOR THE ORIGINAL PUBLICATION DATE. If the page is an article, news piece, blog post, or video, find when it was originally published.
             5. Return the publication date strictly in ISO 8601 format (YYYY-MM-DD). If no clear publication date is found, return null.
             
             Format your response as a valid JSON array of objects.
@@ -126,7 +163,7 @@ export async function generateBookmarksBatch(urls: string[], xApiKey?: string): 
                 model: "gemini-3-flash-preview",
                 contents: prompt,
                 config: {
-                    //tools: [{ googleSearch: {} }],
+                    tools: [{ googleSearch: {} }],
                     temperature: 0.2,
                     responseMimeType: "application/json"
                 }
@@ -207,7 +244,7 @@ export async function generateBookmarksBatch(urls: string[], xApiKey?: string): 
     throw new Error("Batch processing failed.");
 }
 
-export async function generateBookmarkDetails(url: string, xApiKey?: string): Promise<BookmarkResult> {
-    const results = await generateBookmarksBatch([url], xApiKey);
+export async function generateBookmarkDetails(url: string, xApiKey?: string, proxyUrl?: string): Promise<BookmarkResult> {
+    const results = await generateBookmarksBatch([url], xApiKey, proxyUrl);
     return results[0];
 }
