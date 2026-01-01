@@ -4,6 +4,7 @@ import { BookmarkList } from './components/BookmarkList';
 import { Header } from './components/Header';
 import { SettingsModal } from './components/SettingsModal';
 import { NotionSyncModal } from './components/NotionSyncModal';
+import { BulkActionBar } from './components/BulkActionBar';
 import { generateBookmarksBatch, ApiKeyError } from './services/geminiService';
 import { Bookmark } from './types';
 import { v4 as uuidv4 } from 'uuid';
@@ -33,6 +34,9 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
+  // Selection State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  
   // Modal States
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotionSyncOpen, setIsNotionSyncOpen] = useState(false);
@@ -58,7 +62,13 @@ const App: React.FC = () => {
     const stored = localStorage.getItem(AI_BOOKMARKS_STORAGE_KEY);
     if (stored) {
       try {
-        setBookmarks(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        // Ensure legacy data has keywords array
+        const sanitized = Array.isArray(parsed) ? parsed.map((b: any) => ({
+            ...b,
+            keywords: Array.isArray(b.keywords) ? b.keywords : []
+        })) : [];
+        setBookmarks(sanitized);
       } catch (e) {
         localStorage.removeItem(AI_BOOKMARKS_STORAGE_KEY);
       }
@@ -104,6 +114,7 @@ const App: React.FC = () => {
 
     setIsLoading(true);
     setError(null);
+    handleClearSelection(); // Clear selection on new import
 
     const existingUrls = new Set(bookmarks.filter(b => b.status !== 'error').map(b => b.url));
     const uniqueBatch: { url: string; addDate?: string }[] = [];
@@ -195,9 +206,17 @@ const App: React.FC = () => {
 
   const handleDeleteBookmark = useCallback((id: string) => {
     setBookmarks(prev => prev.filter(b => b.id !== id));
+    setSelectedIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+    });
   }, []);
   
-  const handleClearAll = useCallback(() => setBookmarks([]), []);
+  const handleClearAll = useCallback(() => {
+      setBookmarks([]);
+      setSelectedIds(new Set());
+  }, []);
 
   const handleRetryBookmark = useCallback(async (id: string) => {
     const target = bookmarks.find(b => b.id === id);
@@ -222,8 +241,40 @@ const App: React.FC = () => {
     }
   }, [bookmarks, xApiKey, notionConfig.proxyUrl]);
 
+  // Selection Handlers
+  const handleToggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(id)) newSet.delete(id);
+        else newSet.add(id);
+        return newSet;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback((ids: string[]) => {
+      setSelectedIds(new Set(ids));
+  }, []);
+
+  const handleClearSelection = useCallback(() => {
+      setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkAddKeyword = useCallback((keyword: string) => {
+      setBookmarks(prev => prev.map(b => {
+          if (selectedIds.has(b.id)) {
+              // Ensure keywords array exists
+              const currentKeywords = Array.isArray(b.keywords) ? b.keywords : [];
+              // Case insensitive check to avoid duplicates
+              if (!currentKeywords.some(k => k.toLowerCase() === keyword.toLowerCase())) {
+                  return { ...b, keywords: [...currentKeywords, keyword] };
+              }
+          }
+          return b;
+      }));
+  }, [selectedIds]);
+
   return (
-    <div className="min-h-screen text-slate-800 dark:text-slate-200">
+    <div className="min-h-screen text-slate-800 dark:text-slate-200 relative">
       <Header 
         bookmarks={bookmarks} 
         onClearAll={handleClearAll} 
@@ -236,9 +287,26 @@ const App: React.FC = () => {
         <div className="max-w-4xl mx-auto">
           <UrlInput onProcess={handleProcessUrls} isLoading={isLoading} onOpenSettings={() => setIsSettingsOpen(true)} />
           {error && <div className="mt-4 text-center text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-lg">{error}</div>}
-          <BookmarkList bookmarks={bookmarks} onUpdate={handleUpdateBookmark} onDelete={handleDeleteBookmark} onRetry={handleRetryBookmark} />
+          <BookmarkList 
+            bookmarks={bookmarks} 
+            onUpdate={handleUpdateBookmark} 
+            onDelete={handleDeleteBookmark} 
+            onRetry={handleRetryBookmark}
+            selectedIds={selectedIds}
+            onToggleSelect={handleToggleSelect}
+            onSelectAll={handleSelectAll}
+            onClearSelection={handleClearSelection}
+          />
         </div>
       </main>
+      
+      {selectedIds.size > 0 && (
+          <BulkActionBar 
+             selectedCount={selectedIds.size}
+             onClearSelection={handleClearSelection}
+             onAddKeyword={handleBulkAddKeyword}
+          />
+      )}
       
       <SettingsModal 
         isOpen={isSettingsOpen} 
