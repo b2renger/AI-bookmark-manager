@@ -73,76 +73,74 @@ async function fetchTweetContext(url: string, apiKey?: string): Promise<string |
 
 // Helper to fetch youtube content details via proxy (Supports Videos and Playlists)
 async function fetchYouTubeContext(url: string, proxyUrl?: string): Promise<string | null> {
-    // Check for Video ID (standard 11 chars)
-    const videoRegExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
+    // 1. Robust Video ID extraction (covers youtu.be, watch?v=, embed/, etc.)
+    const videoRegExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
     const videoMatch = url.match(videoRegExp);
-    const videoId = (videoMatch && videoMatch[7] && videoMatch[7].length === 11) ? videoMatch[7] : null;
+    const videoId = videoMatch ? videoMatch[1] : null;
 
-    // Check for Playlist ID
+    // 2. Playlist ID extraction
     const playlistMatch = url.match(/[?&]list=([^#\&\?]+)/);
     const playlistId = playlistMatch ? playlistMatch[1] : null;
     
+    // If neither, we can't do anything special
     if (!videoId && !playlistId) return null;
 
-    // Use proxy if available to fetch the page HTML and extract meta description
-    if (proxyUrl) {
-        let targetUrl = '';
-        let type = '';
+    // Prioritize Video if both exist (watching a video in a playlist context)
+    // Only treat as Playlist if there is NO video ID.
+    const isVideo = !!videoId;
+    
+    if (!proxyUrl) return null;
 
-        if (videoId) {
-            targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
-            type = 'Video';
-        } else {
-            // Fallback to playlist if no video ID found
-            targetUrl = `https://www.youtube.com/playlist?list=${playlistId}`;
-            type = 'Playlist';
-        }
+    let targetUrl = '';
+    let type = '';
 
-        const fetchUrl = `${proxyUrl}${encodeURIComponent(targetUrl)}`;
-        try {
-            const res = await fetch(fetchUrl);
-            if (res.ok) {
-                const html = await res.text();
-                
-                // Try standard meta tags
-                let titleMatch = html.match(/<meta name="title" content="([^"]*)"/i);
-                let descMatch = html.match(/<meta name="description" content="([^"]*)"/i);
-                
-                // Fallback to Open Graph tags (common on YouTube)
-                if (!titleMatch) titleMatch = html.match(/<meta property="og:title" content="([^"]*)"/i);
-                if (!descMatch) descMatch = html.match(/<meta property="og:description" content="([^"]*)"/i);
+    if (isVideo) {
+        targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        type = 'Video';
+    } else {
+        targetUrl = `https://www.youtube.com/playlist?list=${playlistId}`;
+        type = 'Playlist';
+    }
 
-                const title = titleMatch ? titleMatch[1] : '';
-                const desc = descMatch ? descMatch[1] : '';
+    const fetchUrl = `${proxyUrl}${encodeURIComponent(targetUrl)}`;
+    
+    try {
+        const res = await fetch(fetchUrl);
+        if (res.ok) {
+            const html = await res.text();
+            
+            // Helper to extract meta content safely handling single/double quotes
+            const getMeta = (name: string) => {
+                const pattern = new RegExp(`<meta\\s+(?:name|property)=["'](?:og:)?${name}["']\\s+content=["']([^"']*)["']`, 'i');
+                const match = html.match(pattern);
+                return match ? match[1] : null;
+            };
+
+            // Try standard and OG tags
+            const title = getMeta('title') || html.match(/<title>([^<]*)<\/title>/i)?.[1] || '';
+            const desc = getMeta('description') || '';
+            
+            let extraContext = '';
+            if (type === 'Playlist') {
+                // Attempt to extract video titles from the playlist page HTML
+                // This regex looks for titles inside the JSON blobs YouTube embeds in the page
+                const playlistItemRegex = /"playlistVideoRenderer":\{.*?"title":\{(?:.*?"text":"(.*?)".*?|.*?"simpleText":"(.*?)")/g;
+                const matches = [...html.matchAll(playlistItemRegex)];
+                const titles = matches.map(m => m[1] || m[2]).filter(Boolean);
+                const uniqueTitles = [...new Set(titles)].slice(0, 15);
                 
-                let extraContext = '';
-                if (type === 'Playlist') {
-                    // Attempt to extract video titles from the playlist page HTML
-                    // Pattern looks for playlistVideoRenderer which contains the video info in a playlist
-                    // We look for the title text within that block in the ytInitialData JSON structure.
-                    // This regex covers "runs":[{"text":"..."}] (common) and "simpleText":"..." (occasional)
-                    // It uses non-greedy matching to stay within the renderer block.
-                    const playlistItemRegex = /"playlistVideoRenderer":\{.*?"title":\{(?:.*?"text":"(.*?)".*?|.*?"simpleText":"(.*?)")/g;
-                    
-                    const matches = [...html.matchAll(playlistItemRegex)];
-                    // Map matches: group 1 is from 'runs', group 2 is from 'simpleText'
-                    const titles = matches.map(m => m[1] || m[2]).filter(Boolean);
-                    
-                    // Deduplicate and take the top 15 to give the AI enough context without token overflow
-                    const uniqueTitles = [...new Set(titles)].slice(0, 15);
-                    
-                    if (uniqueTitles.length > 0) {
-                        extraContext = `\n\nVideos in this playlist (First ${uniqueTitles.length}):\n- ${uniqueTitles.join('\n- ')}`;
-                    }
-                }
-                
-                if (title || desc || extraContext) {
-                     return `YouTube ${type} Details:\nTitle: ${title}\nDescription: ${desc}${extraContext}`;
+                if (uniqueTitles.length > 0) {
+                    extraContext = `\n\nVideos in this playlist (First ${uniqueTitles.length}):\n- ${uniqueTitles.join('\n- ')}`;
                 }
             }
-        } catch (e) {
-            console.warn(`YouTube proxy fetch failed for ${type}, relying on Google Search tool`, e);
+            
+            // Only return if we found something useful
+            if (title || desc || extraContext) {
+                 return `YouTube ${type} Details (Scraped):\nTitle: ${title}\nDescription: ${desc}${extraContext}`;
+            }
         }
+    } catch (e) {
+        console.warn(`YouTube proxy fetch failed for ${type}`, e);
     }
     return null;
 }
@@ -182,9 +180,9 @@ export async function generateBookmarksBatch(urls: string[], xApiKey?: string, p
             
             Instructions for EACH URL:
             1. Use the search tool to find the actual page content and metadata. 
-               - IF Additional Context is provided above for a URL (e.g. Tweet content, YouTube description, Playlist video list), PRIORTIZE using that context for the summary.
-               - For YouTube videos, specifically read the DESCRIPTION provided in context.
-               - For YouTube playlists, specifically use the list of "Videos in this playlist" provided in the context to generate a summary that describes the collection's theme.
+               - IF "[Additional Context Retrieved]" is present for a URL, PRIORTIZE using that information.
+               - For YouTube videos, read the description (from Context if available, or search results).
+               - For YouTube playlists, use the list of videos (from Context if available) to describe the collection's theme.
             2. Extract a clear title and a 2-sentence informative summary.
             3. Identify 3-5 specific keywords.
             4. SEARCH FOR THE ORIGINAL PUBLICATION DATE. If the page is an article, news piece, blog post, or video, find when it was originally published.
