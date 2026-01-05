@@ -177,6 +177,15 @@ export const BookmarkItem: React.FC<BookmarkItemProps> = ({ bookmark, isSelected
                     <a href={bookmark.url} target="_blank" rel="noopener noreferrer" className="p-2 text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors" title="Open link">
                         <ExternalLinkIcon />
                     </a>
+                    {bookmark.status !== 'processing' && (
+                        <button 
+                            onClick={() => onRetry(bookmark.id)} 
+                            className="p-2 text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors" 
+                            title="Refetch details"
+                        >
+                            <RetryIcon />
+                        </button>
+                    )}
                     <button onClick={() => onDelete(bookmark.id)} className="p-2 text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Delete bookmark">
                         <TrashIcon />
                     </button>

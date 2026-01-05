@@ -222,7 +222,7 @@ const App: React.FC = () => {
     const target = bookmarks.find(b => b.id === id);
     if (!target) return;
 
-    setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'processing', title: 'Retrying...' } : b));
+    setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'processing', title: 'Updating...' } : b));
     
     try {
         const result = await generateBookmarksBatch([target.url], xApiKey, notionConfig.proxyUrl);
