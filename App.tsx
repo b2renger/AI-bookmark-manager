@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { UrlInput } from './components/UrlInput';
 import { BookmarkList } from './components/BookmarkList';
@@ -179,13 +180,19 @@ const App: React.FC = () => {
                 return next;
             });
         } catch (e: any) {
-            if (e instanceof ApiKeyError) {
-                setError("API Key Error. Please check your environment configuration.");
+            const msg = e instanceof Error ? e.message : String(e);
+            
+            // Check for platform-specific key selection error
+            if (msg.includes("Requested entity was not found.") || e instanceof ApiKeyError) {
+                setError("Gemini API Key missing or invalid. Please check your configuration in Settings.");
                 setIsLoading(false);
+                // Mark current batch as error
+                setBookmarks(prev => prev.map(b => 
+                    chunk.some(c => c.id === b.id) ? { ...b, title: 'Auth Error', summary: 'Missing/Invalid API Key. Update in Settings.', status: 'error' } : b
+                ));
                 return;
             }
             
-            const msg = e instanceof Error ? e.message : 'Batch failed';
             setBookmarks(prev => prev.map(b => 
                 chunk.some(c => c.id === b.id) ? { ...b, title: 'Error', summary: msg, status: 'error' } : b
             ));
@@ -224,8 +231,21 @@ const App: React.FC = () => {
 
     setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'processing', title: 'Updating...' } : b));
     
+    // Timeout constant for retry operations
+    const RETRY_TIMEOUT_MS = 30000;
+
     try {
-        const result = await generateBookmarksBatch([target.url], xApiKey, notionConfig.proxyUrl);
+        const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error("Request timed out. Please try again.")), RETRY_TIMEOUT_MS)
+        );
+
+        // Race condition: either result returns or timeout throws
+        // @ts-ignore - TypeScript issue with Promise.race array types
+        const result = await Promise.race([
+             generateBookmarksBatch([target.url], xApiKey, notionConfig.proxyUrl),
+             timeoutPromise
+        ]);
+
         const res = result[0];
         setBookmarks(prev => prev.map(b => b.id === id ? {
             ...b,
@@ -237,7 +257,11 @@ const App: React.FC = () => {
             status: (!res.summary || res.summary.length < 10) ? 'warning' : 'done'
         } : b));
     } catch (e: any) {
-        setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'error', summary: e.message } : b));
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("Requested entity was not found.")) {
+             setError("Gemini API Key invalid. Please re-select it in Settings.");
+        }
+        setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'error', summary: msg || "Retry failed" } : b));
     }
   }, [bookmarks, xApiKey, notionConfig.proxyUrl]);
 
@@ -286,7 +310,7 @@ const App: React.FC = () => {
       <main className="container mx-auto p-4 md:p-8">
         <div className="max-w-4xl mx-auto">
           <UrlInput onProcess={handleProcessUrls} isLoading={isLoading} onOpenSettings={() => setIsSettingsOpen(true)} />
-          {error && <div className="mt-4 text-center text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-lg">{error}</div>}
+          {error && <div className="mt-4 text-center text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-lg shadow-sm border border-red-200 dark:border-red-800">{error}</div>}
           <BookmarkList 
             bookmarks={bookmarks} 
             onUpdate={handleUpdateBookmark} 
