@@ -53,7 +53,14 @@ async function fetchTweetContext(url: string, apiKey?: string, proxyUrl?: string
         try {
             const apiUrl = `https://api.twitter.com/2/tweets/${tweetId}?tweet.fields=text,created_at,author_id`;
             // Use proxy if provided to avoid CORS on browser
-            const requestUrl = proxyUrl ? `${proxyUrl}${encodeURIComponent(apiUrl)}` : apiUrl;
+            let requestUrl = apiUrl;
+            if (proxyUrl) {
+                if (proxyUrl.includes('corsproxy.io') || proxyUrl.includes('codetabs.com')) {
+                    requestUrl = `${proxyUrl}${encodeURIComponent(apiUrl)}`;
+                } else {
+                    requestUrl = `${proxyUrl}${apiUrl}`;
+                }
+            }
 
             const res = await fetchWithTimeout(requestUrl, {
                 headers: {
@@ -67,14 +74,44 @@ async function fetchTweetContext(url: string, apiKey?: string, proxyUrl?: string
                 console.warn(`Twitter API returned status ${res.status}, falling back.`);
             }
         } catch (e) {
-            console.warn("Twitter API fetch failed (likely CORS), falling back to oEmbed", e);
+            console.warn("Twitter API fetch failed (likely CORS), falling back to Syndication API", e);
         }
     }
 
-    // Fallback to oEmbed (Robust for public tweets)
+    // Fallback 1: Syndication API (Often works without auth for public tweets)
+    try {
+        const syndicationUrl = `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}`;
+        let requestUrl = syndicationUrl;
+        if (proxyUrl) {
+            if (proxyUrl.includes('corsproxy.io') || proxyUrl.includes('codetabs.com')) {
+                requestUrl = `${proxyUrl}${encodeURIComponent(syndicationUrl)}`;
+            } else {
+                requestUrl = `${proxyUrl}${syndicationUrl}`;
+            }
+        }
+        
+        const res = await fetchWithTimeout(requestUrl);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.text) {
+                return `Tweet content (via Syndication): "${data.text}" (Posted: ${data.created_at})`;
+            }
+        }
+    } catch (e) {
+        console.warn("Twitter Syndication API failed, falling back to oEmbed", e);
+    }
+
+    // Fallback 2: oEmbed (Robust for public tweets)
     try {
         const targetOembed = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`;
-        const oembedUrl = proxyUrl ? `${proxyUrl}${encodeURIComponent(targetOembed)}` : targetOembed;
+        let oembedUrl = targetOembed;
+        if (proxyUrl) {
+            if (proxyUrl.includes('corsproxy.io') || proxyUrl.includes('codetabs.com')) {
+                oembedUrl = `${proxyUrl}${encodeURIComponent(targetOembed)}`;
+            } else {
+                oembedUrl = `${proxyUrl}${targetOembed}`;
+            }
+        }
 
         const res = await fetchWithTimeout(oembedUrl);
         if (res.ok) {
@@ -119,7 +156,14 @@ async function fetchYouTubeContext(url: string, proxyUrl?: string): Promise<stri
         type = 'Playlist';
     }
 
-    const fetchUrl = `${proxyUrl}${encodeURIComponent(targetUrl)}`;
+    let fetchUrl = targetUrl;
+    if (proxyUrl) {
+        if (proxyUrl.includes('corsproxy.io') || proxyUrl.includes('codetabs.com')) {
+            fetchUrl = `${proxyUrl}${encodeURIComponent(targetUrl)}`;
+        } else {
+            fetchUrl = `${proxyUrl}${targetUrl}`;
+        }
+    }
     
     try {
         const res = await fetchWithTimeout(fetchUrl);
@@ -186,7 +230,7 @@ export async function generateBookmarksBatch(urls: string[], xApiKey?: string, p
             Analyze the following list of URLs and provide detailed summaries:
             ${urls.map((url, i) => {
                 const ctx = contexts[i];
-                return `${i + 1}. ${url}${ctx ? `\n   [Additional Context Retrieved]: ${ctx}` : ''}`;
+                return `${i + 1}. ${url}${ctx ? `\n   [Additional Context Retrieved]: ${ctx}` : '\n   [Additional Context Retrieved]: None'}`;
             }).join('\n')}
             
             Instructions for EACH URL:
@@ -194,6 +238,9 @@ export async function generateBookmarksBatch(urls: string[], xApiKey?: string, p
             2. Extract a clear title and a 2-sentence informative summary.
             3. Identify 3-5 specific keywords.
             4. SEARCH FOR THE ORIGINAL PUBLICATION DATE. Return strictly in ISO 8601 format (YYYY-MM-DD) or null.
+            
+            CRITICAL ANTI-HALLUCINATION RULE:
+            If a URL is from x.com or twitter.com, and the [Additional Context Retrieved] is "None", and you cannot find the specific tweet text via search, DO NOT guess or hallucinate the content based on the URL or username. Instead, set the summary to exactly: "Could not retrieve tweet content. Please provide an X API Key in Settings." and set the title to "Restricted Tweet".
             
             Format your response as a valid JSON array of objects.
             `;

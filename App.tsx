@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { UrlInput } from './components/UrlInput';
 import { BookmarkList } from './components/BookmarkList';
 import { Header } from './components/Header';
@@ -16,6 +16,42 @@ const X_API_KEY_STORAGE_KEY = 'ai-bookmark-manager-x-api-key';
 const NOTION_CONFIG_STORAGE_KEY = 'ai-bookmark-manager-notion-config';
 const BATCH_SIZE = 5; // Efficiently process 5 URLs per call to stay under TPM while reducing RPM
 const BATCH_DELAY_MS = 5000; // 5 seconds wait between batches to safely respect 15 RPM limits
+
+const playSuccessChime = () => {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    
+    const playNote = (freq: number, startTime: number, duration: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, startTime);
+      
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(0.1, startTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    };
+
+    const now = ctx.currentTime;
+    // A soft, elegant ascending arpeggio (Cmaj9)
+    playNote(523.25, now, 1.5);       // C5
+    playNote(659.25, now + 0.1, 1.5); // E5
+    playNote(783.99, now + 0.2, 2.0); // G5
+    playNote(987.77, now + 0.3, 2.5); // B5
+    playNote(1174.66, now + 0.4, 3.0); // D6
+  } catch (e) {
+    console.error("Audio playback failed", e);
+  }
+};
 
 const stripUtmParams = (urlString: string): string => {
   if (!urlString || !urlString.includes('utm_')) return urlString;
@@ -41,6 +77,9 @@ const App: React.FC = () => {
   // Modal States
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotionSyncOpen, setIsNotionSyncOpen] = useState(false);
+
+  // Wake Lock Reference
+  const wakeLockRef = useRef<any>(null);
 
   // Settings
   const [xApiKey, setXApiKey] = useState<string>('');
@@ -97,6 +136,48 @@ const App: React.FC = () => {
     else document.documentElement.classList.remove('dark');
     localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
+
+  // Wake Lock Management
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      if (isLoading && 'wakeLock' in navigator) {
+        try {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        } catch (err) {
+          console.warn('Wake Lock error:', err);
+        }
+      }
+    };
+
+    const releaseWakeLock = async () => {
+      if (!isLoading && wakeLockRef.current) {
+        try {
+          await wakeLockRef.current.release();
+          wakeLockRef.current = null;
+        } catch (err) {
+          console.warn('Wake Lock release error:', err);
+        }
+      }
+    };
+
+    if (isLoading) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isLoading) {
+        requestWakeLock();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      releaseWakeLock();
+    };
+  }, [isLoading]);
 
   const toggleDarkMode = useCallback(() => setIsDarkMode(prev => !prev), []);
 
@@ -188,13 +269,13 @@ const App: React.FC = () => {
                 setIsLoading(false);
                 // Mark current batch as error
                 setBookmarks(prev => prev.map(b => 
-                    chunk.some(c => c.id === b.id) ? { ...b, title: 'Auth Error', summary: 'Missing/Invalid API Key. Update in Settings.', status: 'error' } : b
+                    chunk.some(c => c.id === b.id) ? { ...b, title: b.title === 'Processing batch...' || b.title === 'Queued...' ? 'Untitled' : b.title, status: 'error', errorMessage: 'Missing/Invalid API Key. Update in Settings.' } : b
                 ));
                 return;
             }
             
             setBookmarks(prev => prev.map(b => 
-                chunk.some(c => c.id === b.id) ? { ...b, title: 'Error', summary: msg, status: 'error' } : b
+                chunk.some(c => c.id === b.id) ? { ...b, title: b.title === 'Processing batch...' || b.title === 'Queued...' ? 'Untitled' : b.title, status: 'error', errorMessage: msg } : b
             ));
         }
 
@@ -205,6 +286,7 @@ const App: React.FC = () => {
     }
     
     setIsLoading(false);
+    playSuccessChime();
   }, [bookmarks, xApiKey, notionConfig.proxyUrl]);
 
   const handleUpdateBookmark = useCallback((updated: Bookmark) => {
@@ -261,7 +343,7 @@ const App: React.FC = () => {
         if (msg.includes("Requested entity was not found.")) {
              setError("Gemini API Key invalid. Please re-select it in Settings.");
         }
-        setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'error', summary: msg || "Retry failed" } : b));
+        setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'error', errorMessage: msg || "Retry failed", title: b.title === 'Updating...' ? 'Untitled' : b.title } : b));
     }
   }, [bookmarks, xApiKey, notionConfig.proxyUrl]);
 
@@ -296,6 +378,16 @@ const App: React.FC = () => {
           return b;
       }));
   }, [selectedIds]);
+
+  const handleClearSuccessful = useCallback((successfulIds: string[]) => {
+      const successSet = new Set(successfulIds);
+      setBookmarks(prev => prev.filter(b => !successSet.has(b.id)));
+      setSelectedIds(prev => {
+          const next = new Set(prev);
+          successfulIds.forEach(id => next.delete(id));
+          return next;
+      });
+  }, []);
 
   return (
     <div className="min-h-screen text-slate-800 dark:text-slate-200 relative">
@@ -350,6 +442,7 @@ const App: React.FC = () => {
             setIsNotionSyncOpen(false);
             setIsSettingsOpen(true);
         }}
+        onClearSuccessful={handleClearSuccessful}
       />
     </div>
   );

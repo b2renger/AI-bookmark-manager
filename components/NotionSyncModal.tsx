@@ -10,6 +10,7 @@ interface NotionSyncModalProps {
   bookmarks: Bookmark[];
   notionConfig: { apiKey: string; proxyUrl: string };
   onOpenSettings: () => void;
+  onClearSuccessful: (successfulIds: string[]) => void;
 }
 
 export const NotionSyncModal: React.FC<NotionSyncModalProps> = ({ 
@@ -17,13 +18,14 @@ export const NotionSyncModal: React.FC<NotionSyncModalProps> = ({
   onClose, 
   bookmarks, 
   notionConfig,
-  onOpenSettings
+  onOpenSettings,
+  onClearSuccessful
 }) => {
   const [step, setStep] = useState<'loading' | 'select' | 'syncing' | 'complete' | 'error'>('loading');
   const [databases, setDatabases] = useState<NotionDatabase[]>([]);
   const [selectedDbId, setSelectedDbId] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
-  const [syncStats, setSyncStats] = useState({ success: 0, failed: 0 });
+  const [syncStats, setSyncStats] = useState<{ success: Bookmark[]; failed: Bookmark[]; skipped: Bookmark[] }>({ success: [], failed: [], skipped: [] });
 
   useEffect(() => {
     if (isOpen) {
@@ -166,13 +168,32 @@ export const NotionSyncModal: React.FC<NotionSyncModalProps> = ({
                     </svg>
                 </div>
                 <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-2">Sync Complete!</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                    Successfully added {syncStats.success} bookmarks.<br/>
-                    {syncStats.failed > 0 && <span className="text-red-500">Failed to add {syncStats.failed} bookmarks.</span>}
-                </p>
-                <button onClick={onClose} className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm">
-                    Done
-                </button>
+                <div className="text-sm text-slate-500 dark:text-slate-400 mb-6 space-y-1">
+                    <p>Successfully added <span className="font-semibold text-green-600 dark:text-green-400">{syncStats.success.length}</span> bookmarks.</p>
+                    {syncStats.skipped.length > 0 && (
+                        <p className="text-yellow-600 dark:text-yellow-400">Skipped <span className="font-semibold">{syncStats.skipped.length}</span> (already exist).</p>
+                    )}
+                    {syncStats.failed.length > 0 && (
+                        <p className="text-red-500">Failed to add <span className="font-semibold">{syncStats.failed.length}</span> bookmarks.</p>
+                    )}
+                </div>
+                
+                <div className="flex flex-col space-y-3">
+                    {(syncStats.failed.length > 0 || syncStats.skipped.length > 0) && syncStats.success.length > 0 && (
+                        <button 
+                            onClick={() => {
+                                onClearSuccessful(syncStats.success.map(b => b.id));
+                                onClose();
+                            }} 
+                            className="w-full px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 rounded-lg transition-colors border border-blue-200 dark:border-blue-800"
+                        >
+                            Keep Only Failed/Skipped in List
+                        </button>
+                    )}
+                    <button onClick={onClose} className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors">
+                        Done
+                    </button>
+                </div>
             </div>
         )}
       </div>

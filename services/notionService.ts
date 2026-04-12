@@ -11,7 +11,7 @@ export class NotionError extends Error {
 }
 
 // Helper to handle fetch with Proxy and Headers
-async function notionFetch(endpoint: string, method: string, token: string, proxyUrl: string, body?: any) {
+async function notionFetch(endpoint: string, method: string, token: string, proxyUrl: string, body?: any, maxRetries = 3) {
   const targetUrl = `${NOTION_API_BASE}${endpoint}`;
   
   // Robust proxy URL construction
@@ -26,56 +26,58 @@ async function notionFetch(endpoint: string, method: string, token: string, prox
     }
   }
 
-  console.log(`\n=== NOTION API DEBUG ===`);
-  console.log(`1. Proxy Selected: "${proxyUrl || 'None'}"`);
-  console.log(`2. Target Endpoint: "${targetUrl}"`);
-  console.log(`3. Final Fetch URL: "${fetchUrl}"`);
-  console.log(`4. Method: ${method}`);
-  console.log(`5. Auth Token: ${token ? 'Bearer secret_...[HIDDEN]' : 'Missing'}`);
-  if (body) console.log(`6. Request Body:`, JSON.stringify(body));
-  console.log(`========================\n`);
-
   const headers: Record<string, string> = {
     "Authorization": `Bearer ${token}`,
     "Notion-Version": NOTION_VERSION,
     "Content-Type": "application/json",
   };
 
-  try {
-    const response = await fetch(fetchUrl, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-
-    const responseText = await response.text();
-    
-    console.log(`\n=== NOTION API RESPONSE ===`);
-    console.log(`Status: ${response.status} ${response.statusText}`);
-    console.log(`Headers:`, Object.fromEntries(response.headers.entries()));
-    console.log(`Body:`, responseText.substring(0, 1000)); // Log first 1000 chars
-    console.log(`===========================\n`);
-
-    if (!response.ok) {
-      let errorMsg = `Notion API Error: ${response.status} ${response.statusText}`;
-      try {
-        const errData = JSON.parse(responseText);
-        errorMsg = errData.message || errorMsg;
-      } catch (e) {
-        // ignore json parse error
+  let attempt = 0;
+  while (attempt <= maxRetries) {
+    try {
+      if (attempt > 0) {
+        console.log(`Retrying Notion API request (Attempt ${attempt + 1}/${maxRetries + 1})...`);
       }
-      throw new NotionError(errorMsg);
-    }
 
-    return JSON.parse(responseText);
-  } catch (error) {
-    if (error instanceof NotionError) throw error;
-    
-    // Handle network errors (CORS, Proxy down, etc.)
-    console.error("Network error during Notion fetch:", error);
-    throw new NotionError(
-      "Network Error: Failed to connect to Notion. If you are using CORSProxy.io, it is likely blocking requests from the AI Studio preview domain. Please switch to 'Worker Proxy (Cloudflare)' in Settings (and follow the unlock instructions), or run the app locally."
-    );
+      const response = await fetch(fetchUrl, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+
+      const responseText = await response.text();
+
+      if (!response.ok) {
+        // Handle Rate Limiting (429)
+        if (response.status === 429 && attempt < maxRetries) {
+          const retryAfter = response.headers.get('Retry-After');
+          const waitTime = retryAfter ? parseInt(retryAfter, 10) * 1000 : 1000 * Math.pow(2, attempt);
+          console.warn(`Notion API Rate Limit hit (429). Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          attempt++;
+          continue;
+        }
+
+        let errorMsg = `Notion API Error: ${response.status} ${response.statusText}`;
+        try {
+          const errData = JSON.parse(responseText);
+          errorMsg = errData.message || errorMsg;
+        } catch (e) {
+          // ignore json parse error
+        }
+        throw new NotionError(errorMsg);
+      }
+
+      return JSON.parse(responseText);
+    } catch (error) {
+      if (error instanceof NotionError) throw error;
+      
+      // Handle network errors (CORS, Proxy down, etc.)
+      console.error("Network error during Notion fetch:", error);
+      throw new NotionError(
+        "Network Error: Failed to connect to Notion. If you are using CORSProxy.io, it is likely blocking requests from the AI Studio preview domain. Please switch to 'Worker Proxy (Cloudflare)' in Settings (and follow the unlock instructions), or run the app locally."
+      );
+    }
   }
 }
 
@@ -143,7 +145,7 @@ export async function exportToNotion(
   databaseId: string, 
   databaseProperties: Record<string, any>, 
   bookmarks: Bookmark[]
-): Promise<{ success: number; failed: number }> {
+): Promise<{ success: Bookmark[]; failed: Bookmark[]; skipped: Bookmark[] }> {
   
   // 1. Ensure the database has the required schema columns
   try {
@@ -153,18 +155,32 @@ export async function exportToNotion(
   }
 
   // 2. Map properties. We prioritize the standard names we expect/enforced.
-  // Note: Notion properties are keyed by their ID usually in API responses, but we need Names for creation? 
-  // Actually, for creating pages, we can use property Names or IDs. Using Names is safer if we just created them.
-  
   // Find the Title property (always exists)
   const titlePropKey = Object.keys(databaseProperties).find(k => databaseProperties[k].type === 'title');
   const titlePropName = titlePropKey ? databaseProperties[titlePropKey].name : 'Name';
 
-  let success = 0;
-  let failed = 0;
+  const success: Bookmark[] = [];
+  const failed: Bookmark[] = [];
+  const skipped: Bookmark[] = [];
 
   for (const bookmark of bookmarks) {
     try {
+      // Check if bookmark already exists in the database by URL
+      const queryResult = await notionFetch(`/databases/${databaseId}/query`, "POST", token, proxyUrl, {
+        filter: {
+          property: "URL",
+          url: {
+            equals: bookmark.url
+          }
+        }
+      });
+
+      if (queryResult.results && queryResult.results.length > 0) {
+        console.log(`Bookmark ${bookmark.url} already exists in Notion. Skipping.`);
+        skipped.push(bookmark);
+        continue;
+      }
+
       const properties: any = {};
 
       // Title
@@ -200,8 +216,6 @@ export async function exportToNotion(
 
       // Content Body (Sources)
       const children = [];
-      // We put the summary in the property 'Description', but also optionally in body? 
-      // User asked for summary as 'Description' property. Let's keep body for Sources only.
       
       if (bookmark.sources && bookmark.sources.length > 0) {
           children.push({
@@ -228,12 +242,18 @@ export async function exportToNotion(
         children: children.length > 0 ? children : undefined
       });
 
-      success++;
+      success.push(bookmark);
+      
+      // Notion API rate limit is typically 3 requests per second.
+      // Add a baseline delay of 350ms between requests to prevent hitting the limit.
+      if (bookmarks.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 350));
+      }
     } catch (e) {
       console.error(`Failed to export bookmark ${bookmark.url} to Notion`, e);
-      failed++;
+      failed.push(bookmark);
     }
   }
 
-  return { success, failed };
+  return { success, failed, skipped };
 }

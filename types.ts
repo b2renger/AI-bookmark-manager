@@ -8,6 +8,7 @@ export interface Bookmark {
   status: 'processing' | 'done' | 'error' | 'warning';
   createdAt: string; // ISO date string
   sources?: { uri: string; title: string }[];
+  errorMessage?: string;
 }
 
 export interface NotionDatabase {

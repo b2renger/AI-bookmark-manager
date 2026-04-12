@@ -68,8 +68,11 @@ const EditableField: React.FC<{ value: string, onSave: (newValue: string) => voi
     }
     
     return (
-        <span onClick={() => setIsEditing(true)} className="cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 p-1 -m-1 rounded-md">
-            {value}
+        <span 
+            onClick={() => setIsEditing(true)} 
+            className={`cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 p-1 -m-1 rounded-md inline-block min-w-[50px] ${!value ? 'text-slate-400 italic' : ''}`}
+        >
+            {value || (isTextArea ? 'Click to add summary...' : 'Click to add title...')}
         </span>
     );
 };
@@ -194,12 +197,12 @@ export const BookmarkItem: React.FC<BookmarkItemProps> = ({ bookmark, isSelected
 
             {bookmark.status !== 'processing' && (
                 <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-                {bookmark.status === 'error' ? (
-                        <div className="text-red-500 bg-red-50 dark:bg-red-900/40 p-3 rounded-md" role="alert">
+                {bookmark.status === 'error' && (
+                        <div className="mb-4 text-red-500 bg-red-50 dark:bg-red-900/40 p-3 rounded-md" role="alert">
                         <div className="flex justify-between items-start">
                             <div>
                                 <p className="font-semibold">Error</p>
-                                <p className="text-sm">{bookmark.summary}</p>
+                                <p className="text-sm">{bookmark.errorMessage || 'An error occurred.'}</p>
                             </div>
                             <button
                                 onClick={() => onRetry(bookmark.id)}
@@ -211,83 +214,81 @@ export const BookmarkItem: React.FC<BookmarkItemProps> = ({ bookmark, isSelected
                             </button>
                         </div>
                         </div>
-                    ) : (
-                        <>
-                            {bookmark.status === 'warning' && (
-                                <div className="mb-4 text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/40 p-3 rounded-md" role="status">
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex items-start">
-                                            <WarningIcon className="h-5 w-5 mr-3 mt-0.5 flex-shrink-0 text-amber-500" />
-                                            <div>
-                                                <p className="font-semibold">Partial Information</p>
-                                                <p className="text-sm">The AI had trouble generating a complete summary or keywords. You can retry or edit the details manually.</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => onRetry(bookmark.id)}
-                                            className="ml-4 flex items-center space-x-2 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-md transition-colors flex-shrink-0"
-                                            title="Retry processing this bookmark"
-                                        >
-                                            <RetryIcon className="h-4 w-4" />
-                                            <span>Retry</span>
-                                        </button>
+                    )}
+                    
+                    {bookmark.status === 'warning' && (
+                        <div className="mb-4 text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/40 p-3 rounded-md" role="status">
+                            <div className="flex justify-between items-start">
+                                <div className="flex items-start">
+                                    <WarningIcon className="h-5 w-5 mr-3 mt-0.5 flex-shrink-0 text-amber-500" />
+                                    <div>
+                                        <p className="font-semibold">Partial Information</p>
+                                        <p className="text-sm">The AI had trouble generating a complete summary or keywords. You can retry or edit the details manually.</p>
                                     </div>
                                 </div>
-                            )}
-                            <div>
-                                <label className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                                    Summary {(bookmark.status === 'done' || bookmark.status === 'warning') && <AIBadge />}
-                                </label>
-                                <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
-                                    <EditableField value={bookmark.summary} onSave={handleSummaryUpdate} isTextArea />
-                                </p>
+                                <button
+                                    onClick={() => onRetry(bookmark.id)}
+                                    className="ml-4 flex items-center space-x-2 px-3 py-1.5 text-sm font-medium text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-md transition-colors flex-shrink-0"
+                                    title="Retry processing this bookmark"
+                                >
+                                    <RetryIcon className="h-4 w-4" />
+                                    <span>Retry</span>
+                                </button>
                             </div>
-                            {/* Fix: Display sources if they exist */}
-                            {bookmark.sources && bookmark.sources.length > 0 && (
-                                <div className="mt-4">
-                                    <label className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">
-                                        Sources
-                                    </label>
-                                    <ul className="mt-1 list-disc list-inside text-sm text-slate-600 dark:text-slate-300 space-y-1">
-                                        {bookmark.sources.map((source, index) => (
-                                            <li key={index} className="truncate">
-                                                <a href={source.uri} target="_blank" rel="noopener noreferrer" className="text-blue-500 dark:text-blue-400 hover:underline" title={source.title || source.uri}>
-                                                    {source.title || source.uri}
-                                                </a>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-                            <div className="mt-4">
-                                <label className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 flex items-center gap-1" id={`keywords-label-${bookmark.id}`}>
-                                    Keywords {(bookmark.status === 'done' || bookmark.status === 'warning') && <AIBadge />}
-                                </label>
-                                <div className="mt-1 flex flex-wrap items-center gap-2" role="group" aria-labelledby={`keywords-label-${bookmark.id}`}>
-                                    {(Array.isArray(bookmark.keywords) ? bookmark.keywords : []).map((keyword, index) => (
-                                        <span key={`${keyword}-${index}`} className="flex items-center bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 text-sm font-medium px-2 py-1 rounded-full">
-                                            {keyword}
-                                            <button 
-                                                onClick={() => handleKeywordRemove(index)} 
-                                                className="ml-1.5 -mr-1 p-0.5 rounded-full text-blue-800 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                aria-label={`Remove keyword ${keyword}`}
-                                                title={`Remove ${keyword}`}
-                                            >
-                                                <CloseIcon className="h-3 w-3" />
-                                            </button>
-                                        </span>
-                                    ))}
-                                    <input
-                                        type="text"
-                                        onKeyDown={handleKeywordAdd}
-                                        placeholder="Add keyword..."
-                                        aria-label="Add a new keyword"
-                                        className="flex-grow bg-transparent outline-none p-1 text-sm border-b border-dashed border-slate-400 dark:border-slate-500 focus:border-solid focus:border-blue-500 min-w-[100px]"
-                                    />
-                                </div>
-                            </div>
-                        </>
+                        </div>
                     )}
+                    <div>
+                        <label className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                            Summary {(bookmark.status === 'done' || bookmark.status === 'warning') && <AIBadge />}
+                        </label>
+                        <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
+                            <EditableField value={bookmark.summary || ''} onSave={handleSummaryUpdate} isTextArea />
+                        </p>
+                    </div>
+                    {/* Fix: Display sources if they exist */}
+                    {bookmark.sources && bookmark.sources.length > 0 && (
+                        <div className="mt-4">
+                            <label className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">
+                                Sources
+                            </label>
+                            <ul className="mt-1 list-disc list-inside text-sm text-slate-600 dark:text-slate-300 space-y-1">
+                                {bookmark.sources.map((source, index) => (
+                                    <li key={index} className="truncate">
+                                        <a href={source.uri} target="_blank" rel="noopener noreferrer" className="text-blue-500 dark:text-blue-400 hover:underline" title={source.title || source.uri}>
+                                            {source.title || source.uri}
+                                        </a>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    <div className="mt-4">
+                        <label className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 flex items-center gap-1" id={`keywords-label-${bookmark.id}`}>
+                            Keywords {(bookmark.status === 'done' || bookmark.status === 'warning') && <AIBadge />}
+                        </label>
+                        <div className="mt-1 flex flex-wrap items-center gap-2" role="group" aria-labelledby={`keywords-label-${bookmark.id}`}>
+                            {(Array.isArray(bookmark.keywords) ? bookmark.keywords : []).map((keyword, index) => (
+                                <span key={`${keyword}-${index}`} className="flex items-center bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 text-sm font-medium px-2 py-1 rounded-full">
+                                    {keyword}
+                                    <button 
+                                        onClick={() => handleKeywordRemove(index)} 
+                                        className="ml-1.5 -mr-1 p-0.5 rounded-full text-blue-800 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        aria-label={`Remove keyword ${keyword}`}
+                                        title={`Remove ${keyword}`}
+                                    >
+                                        <CloseIcon className="h-3 w-3" />
+                                    </button>
+                                </span>
+                            ))}
+                            <input
+                                type="text"
+                                onKeyDown={handleKeywordAdd}
+                                placeholder="Add keyword..."
+                                aria-label="Add a new keyword"
+                                className="flex-grow bg-transparent outline-none p-1 text-sm border-b border-dashed border-slate-400 dark:border-slate-500 focus:border-solid focus:border-blue-500 min-w-[100px]"
+                            />
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
