@@ -1,6 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { CloseIcon } from './common/Icons';
+import { getAccessibleDatabases } from '../services/notionService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -14,7 +15,8 @@ interface SettingsModalProps {
 const PROXY_PRESETS = [
     { label: "CORSProxy.io (Recommended)", value: "https://corsproxy.io/?" },
     { label: "CodeTabs", value: "https://api.codetabs.com/v1/proxy?quest=" },
-    { label: "AllOrigins (JSON)", value: "https://api.allorigins.win/raw?url=" },
+    { label: "ThingProxy", value: "https://thingproxy.freeboard.io/fetch/" },
+    { label: "Worker Proxy (Cloudflare)", value: "https://cors-anywhere.herokuapp.com/" },
 ];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -28,36 +30,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [xKeyValue, setXKeyValue] = useState(xApiKey);
   const [notionKey, setNotionKey] = useState(notionConfig.apiKey);
   const [proxyUrl, setProxyUrl] = useState(notionConfig.proxyUrl);
-  const [hasGeminiKey, setHasGeminiKey] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-        // Check if a Gemini API key is already selected in the environment
-        const checkGeminiKey = async () => {
-            try {
-                // @ts-ignore - window.aistudio is pre-configured in this environment
-                const has = await window.aistudio.hasSelectedApiKey();
-                setHasGeminiKey(has);
-            } catch (e) {
-                console.warn("Gemini key status check failed", e);
-            }
-        };
-        checkGeminiKey();
-    }
-  }, [isOpen]);
+  const [testStatus, setTestStatus] = useState<{ loading: boolean; error: string | null; success: string | null }>({
+    loading: false,
+    error: null,
+    success: null
+  });
 
   if (!isOpen) return null;
-
-  const handleSelectGeminiKey = async () => {
-    try {
-        // @ts-ignore - window.aistudio is pre-configured in this environment
-        await window.aistudio.openSelectKey();
-        // Assume success as per platform race condition guidance
-        setHasGeminiKey(true);
-    } catch (e) {
-        console.error("Failed to open Gemini key selector", e);
-    }
-  };
 
   const handleSave = () => {
     onSaveXApiKey(xKeyValue.trim());
@@ -70,6 +49,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       if (value) {
           setProxyUrl(value);
       }
+  };
+
+  const handleTestConnection = async () => {
+    if (!notionKey.trim()) {
+      setTestStatus({ loading: false, error: "Please enter a Notion Integration Token first.", success: null });
+      return;
+    }
+    setTestStatus({ loading: true, error: null, success: null });
+    try {
+      const dbs = await getAccessibleDatabases(notionKey.trim(), proxyUrl.trim());
+      setTestStatus({ 
+        loading: false, 
+        error: null, 
+        success: `Success! Found ${dbs.length} accessible database(s).` 
+      });
+    } catch (e: any) {
+      setTestStatus({ 
+        loading: false, 
+        error: e.message || "Failed to connect to Notion.", 
+        success: null 
+      });
+    }
   };
 
   return (
@@ -86,36 +87,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         <div className="space-y-6">
-          {/* Gemini API Section */}
-          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800/50">
-            <h3 className="text-md font-semibold text-blue-900 dark:text-blue-100 mb-3 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-blue-600">
-                <path d="M11.644 1.59a.75.75 0 0 1 .712 0l9.75 5.63a.75.75 0 0 1 0 1.298l-9.75 5.63a.75.75 0 0 1-.712 0l-9.75-5.63a.75.75 0 0 1 0-1.298l9.75-5.63Zm0 13.522a.75.75 0 0 1 .712 0l9.75 5.63a.75.75 0 0 1 0 1.298l-9.75 5.63a.75.75 0 0 1-.712 0l-9.75-5.63a.75.75 0 0 1 0-1.298l9.75-5.63Z" />
-              </svg>
-              Gemini API Key
-            </h3>
-            
-            <div className="flex items-center justify-between mb-4">
-                <div className="flex flex-col">
-                    <span className="text-xs uppercase font-bold text-slate-500 dark:text-slate-400">Status</span>
-                    <span className={`text-sm font-medium ${hasGeminiKey ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                        {hasGeminiKey ? '● Key Configured' : '○ No Key Selected'}
-                    </span>
-                </div>
-                <button
-                    onClick={handleSelectGeminiKey}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
-                >
-                    {hasGeminiKey ? 'Change Key' : 'Select Key'}
-                </button>
-            </div>
-            
-            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                Provide an API key from a paid GCP project to enable AI summaries. 
-                Manage your billing and project settings at <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">ai.google.dev</a>.
-            </p>
-          </div>
-
           {/* X / Twitter Section */}
           <div className="p-4 bg-slate-50 dark:bg-slate-700/30 rounded-lg border border-slate-100 dark:border-slate-700">
             <h3 className="text-md font-semibold text-slate-800 dark:text-slate-200 mb-3">Twitter / X Integration</h3>
@@ -153,7 +124,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               />
             </div>
 
-            <div>
+            <div className="mb-4">
               <label htmlFor="proxy-preset" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 CORS Proxy Service
               </label>
@@ -184,6 +155,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 Used to bypass CORS when fetching YouTube/Twitter context or syncing to Notion. The target URL is appended to this base.
               </p>
+              {proxyUrl.includes('cors-anywhere.herokuapp.com') && (
+                <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-md">
+                  <p className="text-xs text-amber-800 dark:text-amber-200 font-medium">
+                    ⚠️ Action Required for this Proxy:
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                    You must visit <a href="https://cors-anywhere.herokuapp.com/corsdemo" target="_blank" rel="noreferrer" className="underline font-semibold hover:text-amber-900 dark:hover:text-amber-100">https://cors-anywhere.herokuapp.com/corsdemo</a> and click "Request temporary access" before this proxy will work.
+                  </p>
+                </div>
+              )}
+              {proxyUrl.includes('corsproxy.io') && (
+                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-md">
+                   <p className="text-xs text-blue-800 dark:text-blue-200 mt-1">
+                    Note: CORSProxy.io often blocks requests originating from the AI Studio preview domain. If it fails, try running the app locally or use the Worker Proxy instead.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-600">
+              <button
+                onClick={handleTestConnection}
+                disabled={testStatus.loading}
+                className="w-full py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-600 dark:hover:bg-slate-500 text-slate-800 dark:text-slate-100 font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                {testStatus.loading ? 'Testing Connection...' : 'Test Notion Connection'}
+              </button>
+              {testStatus.error && (
+                <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md text-xs text-red-600 dark:text-red-300">
+                  {testStatus.error}
+                </div>
+              )}
+              {testStatus.success && (
+                <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-md text-xs text-green-600 dark:text-green-300">
+                  {testStatus.success}
+                </div>
+              )}
             </div>
           </div>
         </div>

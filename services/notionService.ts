@@ -13,8 +13,27 @@ export class NotionError extends Error {
 // Helper to handle fetch with Proxy and Headers
 async function notionFetch(endpoint: string, method: string, token: string, proxyUrl: string, body?: any) {
   const targetUrl = `${NOTION_API_BASE}${endpoint}`;
-  // If a proxy is provided, prepend it. If proxyUrl is empty string, fetch directly.
-  const fetchUrl = proxyUrl ? `${proxyUrl}${encodeURIComponent(targetUrl)}` : targetUrl;
+  
+  // Robust proxy URL construction
+  let fetchUrl = targetUrl;
+  if (proxyUrl) {
+    // corsproxy.io and codetabs usually prefer encoded URLs when passed as a query or path
+    if (proxyUrl.includes('corsproxy.io') || proxyUrl.includes('codetabs.com')) {
+      fetchUrl = `${proxyUrl}${encodeURIComponent(targetUrl)}`;
+    } else {
+      // cors-anywhere and others expect the raw URL appended
+      fetchUrl = `${proxyUrl}${targetUrl}`;
+    }
+  }
+
+  console.log(`\n=== NOTION API DEBUG ===`);
+  console.log(`1. Proxy Selected: "${proxyUrl || 'None'}"`);
+  console.log(`2. Target Endpoint: "${targetUrl}"`);
+  console.log(`3. Final Fetch URL: "${fetchUrl}"`);
+  console.log(`4. Method: ${method}`);
+  console.log(`5. Auth Token: ${token ? 'Bearer secret_...[HIDDEN]' : 'Missing'}`);
+  if (body) console.log(`6. Request Body:`, JSON.stringify(body));
+  console.log(`========================\n`);
 
   const headers: Record<string, string> = {
     "Authorization": `Bearer ${token}`,
@@ -22,24 +41,42 @@ async function notionFetch(endpoint: string, method: string, token: string, prox
     "Content-Type": "application/json",
   };
 
-  const response = await fetch(fetchUrl, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  try {
+    const response = await fetch(fetchUrl, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
 
-  if (!response.ok) {
-    let errorMsg = `Notion API Error: ${response.status}`;
-    try {
-      const errData = await response.json();
-      errorMsg = errData.message || errorMsg;
-    } catch (e) {
-      // ignore json parse error
+    const responseText = await response.text();
+    
+    console.log(`\n=== NOTION API RESPONSE ===`);
+    console.log(`Status: ${response.status} ${response.statusText}`);
+    console.log(`Headers:`, Object.fromEntries(response.headers.entries()));
+    console.log(`Body:`, responseText.substring(0, 1000)); // Log first 1000 chars
+    console.log(`===========================\n`);
+
+    if (!response.ok) {
+      let errorMsg = `Notion API Error: ${response.status} ${response.statusText}`;
+      try {
+        const errData = JSON.parse(responseText);
+        errorMsg = errData.message || errorMsg;
+      } catch (e) {
+        // ignore json parse error
+      }
+      throw new NotionError(errorMsg);
     }
-    throw new NotionError(errorMsg);
-  }
 
-  return response.json();
+    return JSON.parse(responseText);
+  } catch (error) {
+    if (error instanceof NotionError) throw error;
+    
+    // Handle network errors (CORS, Proxy down, etc.)
+    console.error("Network error during Notion fetch:", error);
+    throw new NotionError(
+      "Network Error: Failed to connect to Notion. If you are using CORSProxy.io, it is likely blocking requests from the AI Studio preview domain. Please switch to 'Worker Proxy (Cloudflare)' in Settings (and follow the unlock instructions), or run the app locally."
+    );
+  }
 }
 
 export async function getAccessibleDatabases(token: string, proxyUrl: string): Promise<NotionDatabase[]> {
