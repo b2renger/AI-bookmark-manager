@@ -14,6 +14,7 @@ const AI_BOOKMARKS_STORAGE_KEY = 'ai-bookmark-manager-bookmarks';
 const THEME_STORAGE_KEY = 'ai-bookmark-manager-theme';
 const X_API_KEY_STORAGE_KEY = 'ai-bookmark-manager-x-api-key';
 const NOTION_CONFIG_STORAGE_KEY = 'ai-bookmark-manager-notion-config';
+const GEMINI_MODEL_STORAGE_KEY = 'ai-bookmark-manager-gemini-model';
 const BATCH_SIZE = 5; // Efficiently process 5 URLs per call to stay under TPM while reducing RPM
 const BATCH_DELAY_MS = 5000; // 5 seconds wait between batches to safely respect 15 RPM limits
 
@@ -87,6 +88,9 @@ const App: React.FC = () => {
     apiKey: '', 
     proxyUrl: 'https://corsproxy.io/?' 
   });
+  const [geminiModel, setGeminiModel] = useState<string>(() => {
+    return localStorage.getItem(GEMINI_MODEL_STORAGE_KEY) || 'gemini-3-flash-preview';
+  });
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {
@@ -144,7 +148,7 @@ const App: React.FC = () => {
         try {
           wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
         } catch (err) {
-          console.warn('Wake Lock error:', err);
+          // Silently catch wake lock errors to avoid console noise, as some environments block it
         }
       }
     };
@@ -155,7 +159,7 @@ const App: React.FC = () => {
           await wakeLockRef.current.release();
           wakeLockRef.current = null;
         } catch (err) {
-          console.warn('Wake Lock release error:', err);
+          // Silently catch wake lock release errors
         }
       }
     };
@@ -189,6 +193,11 @@ const App: React.FC = () => {
   const handleSaveNotionConfig = useCallback((config: { apiKey: string; proxyUrl: string }) => {
     setNotionConfig(config);
     localStorage.setItem(NOTION_CONFIG_STORAGE_KEY, JSON.stringify(config));
+  }, []);
+
+  const handleSaveGeminiModel = useCallback((model: string) => {
+    setGeminiModel(model);
+    localStorage.setItem(GEMINI_MODEL_STORAGE_KEY, model);
   }, []);
 
   const handleProcessUrls = useCallback(async (urlData: { url: string; addDate?: string }[]) => {
@@ -238,7 +247,7 @@ const App: React.FC = () => {
 
         try {
             // Pass proxyUrl to allow fetching youtube details
-            const results = await generateBookmarksBatch(chunkUrls, xApiKey, notionConfig.proxyUrl);
+            const results = await generateBookmarksBatch(chunkUrls, xApiKey, notionConfig.proxyUrl, geminiModel);
             
             setBookmarks(prev => {
                 const next = [...prev];
@@ -264,12 +273,20 @@ const App: React.FC = () => {
             const msg = e instanceof Error ? e.message : String(e);
             
             // Check for platform-specific key selection error
-            if (msg.includes("Requested entity was not found.") || e instanceof ApiKeyError) {
+            if (e instanceof ApiKeyError) {
                 setError("Gemini API Key missing or invalid. Please check your configuration in Settings.");
                 setIsLoading(false);
                 // Mark current batch as error
                 setBookmarks(prev => prev.map(b => 
                     chunk.some(c => c.id === b.id) ? { ...b, title: b.title === 'Processing batch...' || b.title === 'Queued...' ? 'Untitled' : b.title, status: 'error', errorMessage: 'Missing/Invalid API Key. Update in Settings.' } : b
+                ));
+                return;
+            } else if (msg.includes("Model not found") || msg.includes("Requested entity was not found.")) {
+                setError("Model not found or not supported. Please select a different Gemini model in Settings.");
+                setIsLoading(false);
+                // Mark current batch as error
+                setBookmarks(prev => prev.map(b => 
+                    chunk.some(c => c.id === b.id) ? { ...b, title: b.title === 'Processing batch...' || b.title === 'Queued...' ? 'Untitled' : b.title, status: 'error', errorMessage: 'Model not supported. Update in Settings.' } : b
                 ));
                 return;
             }
@@ -324,7 +341,7 @@ const App: React.FC = () => {
         // Race condition: either result returns or timeout throws
         // @ts-ignore - TypeScript issue with Promise.race array types
         const result = await Promise.race([
-             generateBookmarksBatch([target.url], xApiKey, notionConfig.proxyUrl),
+             generateBookmarksBatch([target.url], xApiKey, notionConfig.proxyUrl, geminiModel),
              timeoutPromise
         ]);
 
@@ -340,8 +357,10 @@ const App: React.FC = () => {
         } : b));
     } catch (e: any) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (msg.includes("Requested entity was not found.")) {
-             setError("Gemini API Key invalid. Please re-select it in Settings.");
+        if (msg.includes("Model not found") || msg.includes("Requested entity was not found.")) {
+             setError("Model not found or not supported. Please select a different Gemini model in Settings.");
+        } else if (e instanceof ApiKeyError) {
+             setError("Gemini API Key missing or invalid. Please check your configuration in Settings.");
         }
         setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'error', errorMessage: msg || "Retry failed", title: b.title === 'Updating...' ? 'Untitled' : b.title } : b));
     }
@@ -431,6 +450,8 @@ const App: React.FC = () => {
         onSaveXApiKey={handleSaveXApiKey}
         notionConfig={notionConfig}
         onSaveNotionConfig={handleSaveNotionConfig}
+        geminiModel={geminiModel}
+        onSaveGeminiModel={handleSaveGeminiModel}
       />
 
       <NotionSyncModal 

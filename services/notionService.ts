@@ -11,7 +11,7 @@ export class NotionError extends Error {
 }
 
 // Helper to handle fetch with Proxy and Headers
-async function notionFetch(endpoint: string, method: string, token: string, proxyUrl: string, body?: any, maxRetries = 3) {
+async function notionFetch(endpoint: string, method: string, token: string, proxyUrl: string, body?: any, maxRetries = 5) {
   const targetUrl = `${NOTION_API_BASE}${endpoint}`;
   
   // Robust proxy URL construction
@@ -37,6 +37,11 @@ async function notionFetch(endpoint: string, method: string, token: string, prox
     try {
       if (attempt > 0) {
         console.log(`Retrying Notion API request (Attempt ${attempt + 1}/${maxRetries + 1})...`);
+      } else {
+        console.log(`[NotionFetch] Initiating ${method} to ${endpoint}`);
+        console.log(`[NotionFetch] Target URL: ${targetUrl}`);
+        console.log(`[NotionFetch] Final fetch URL: ${fetchUrl}`);
+        console.log(`[NotionFetch] Headers (excluding token): Notion-Version=${NOTION_VERSION}`);
       }
 
       const response = await fetch(fetchUrl, {
@@ -51,12 +56,15 @@ async function notionFetch(endpoint: string, method: string, token: string, prox
         // Handle Rate Limiting (429)
         if (response.status === 429 && attempt < maxRetries) {
           const retryAfter = response.headers.get('Retry-After');
-          const waitTime = retryAfter ? parseInt(retryAfter, 10) * 1000 : 1000 * Math.pow(2, attempt);
+          const waitTime = retryAfter ? parseInt(retryAfter, 10) * 1000 : 2000 * Math.pow(2, attempt);
           console.warn(`Notion API Rate Limit hit (429). Waiting ${waitTime}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
           attempt++;
           continue;
         }
+
+        console.error(`[NotionFetch] Failed: Status ${response.status}`);
+        console.error(`[NotionFetch] Response Body: ${responseText}`);
 
         let errorMsg = `Notion API Error: ${response.status} ${response.statusText}`;
         try {
@@ -73,7 +81,7 @@ async function notionFetch(endpoint: string, method: string, token: string, prox
       if (error instanceof NotionError) throw error;
       
       // Handle network errors (CORS, Proxy down, etc.)
-      console.error("Network error during Notion fetch:", error);
+      console.error(`[NotionFetch] Network error during fetch to ${fetchUrl}:`, error);
       throw new NotionError(
         "Network Error: Failed to connect to Notion. If you are using CORSProxy.io, it is likely blocking requests from the AI Studio preview domain. Please switch to 'Worker Proxy (Cloudflare)' in Settings (and follow the unlock instructions), or run the app locally."
       );
@@ -144,9 +152,11 @@ export async function exportToNotion(
   proxyUrl: string,
   databaseId: string, 
   databaseProperties: Record<string, any>, 
-  bookmarks: Bookmark[]
+  bookmarks: Bookmark[],
+  onProgress?: (current: number, total: number, message: string) => void
 ): Promise<{ success: Bookmark[]; failed: Bookmark[]; skipped: Bookmark[] }> {
   
+  if (onProgress) onProgress(0, bookmarks.length, "Updating database schema...");
   // 1. Ensure the database has the required schema columns
   try {
       await ensureDatabaseSchema(token, proxyUrl, databaseId, databaseProperties);
@@ -155,31 +165,74 @@ export async function exportToNotion(
   }
 
   // 2. Map properties. We prioritize the standard names we expect/enforced.
-  // Find the Title property (always exists)
   const titlePropKey = Object.keys(databaseProperties).find(k => databaseProperties[k].type === 'title');
   const titlePropName = titlePropKey ? databaseProperties[titlePropKey].name : 'Name';
 
   const success: Bookmark[] = [];
   const failed: Bookmark[] = [];
   const skipped: Bookmark[] = [];
+  const existingUrls = new Set<string>();
 
+  // 3. Batch query existing URLs to save API requests (max 50 conditions per OR filter to be safe)
+  const CHUNK_SIZE = 50;
+  for (let i = 0; i < bookmarks.length; i += CHUNK_SIZE) {
+    const chunk = bookmarks.slice(i, i + CHUNK_SIZE);
+    if (onProgress) onProgress(0, bookmarks.length, `Checking existing bookmarks (Batch ${Math.floor(i/CHUNK_SIZE) + 1})...`);
+    
+    const orConditions = chunk.map(b => ({
+      property: "URL",
+      url: { equals: b.url }
+    }));
+
+    try {
+      let hasMore = true;
+      let nextCursor: string | undefined = undefined;
+
+      while (hasMore) {
+        const body: any = { filter: { or: orConditions } };
+        if (nextCursor) body.start_cursor = nextCursor;
+
+        const queryResult = await notionFetch(`/databases/${databaseId}/query`, "POST", token, proxyUrl, body);
+
+        if (queryResult.results) {
+          queryResult.results.forEach((page: any) => {
+            const urlProp = Object.values(page.properties).find((p: any) => p.type === 'url');
+            if (urlProp && typeof urlProp === 'object' && 'url' in urlProp && urlProp.url) {
+              existingUrls.add(urlProp.url);
+            }
+          });
+        }
+
+        hasMore = queryResult.has_more;
+        nextCursor = queryResult.next_cursor;
+        
+        // Minor delay between paginated queries
+        if (hasMore) await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    } catch (e) {
+      console.warn("Failed to query existing URLs in batch, falling back to inserting all.", e);
+    }
+    
+    // Delay between chunks
+    if (bookmarks.length > CHUNK_SIZE && i + CHUNK_SIZE < bookmarks.length) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+
+  // 4. Insert non-existing bookmarks
+  let processed = 0;
   for (const bookmark of bookmarks) {
     try {
-      // Check if bookmark already exists in the database by URL
-      const queryResult = await notionFetch(`/databases/${databaseId}/query`, "POST", token, proxyUrl, {
-        filter: {
-          property: "URL",
-          url: {
-            equals: bookmark.url
-          }
-        }
-      });
-
-      if (queryResult.results && queryResult.results.length > 0) {
+      // Check if bookmark already exists
+      if (existingUrls.has(bookmark.url)) {
         console.log(`Bookmark ${bookmark.url} already exists in Notion. Skipping.`);
         skipped.push(bookmark);
+        processed++;
+        if (onProgress) onProgress(processed, bookmarks.length, `Skipped existing: ${bookmark.title || bookmark.url}`);
         continue;
       }
+
+      if (onProgress) onProgress(processed, bookmarks.length, `Syncing: ${bookmark.title || bookmark.url}...`);
 
       const properties: any = {};
 
@@ -243,15 +296,18 @@ export async function exportToNotion(
       });
 
       success.push(bookmark);
+      processed++;
+      if (onProgress) onProgress(processed, bookmarks.length, `Added: ${bookmark.title || bookmark.url}`);
       
-      // Notion API rate limit is typically 3 requests per second.
-      // Add a baseline delay of 350ms between requests to prevent hitting the limit.
-      if (bookmarks.length > 1) {
-          await new Promise(resolve => setTimeout(resolve, 350));
+      // Strict baseline delay to NEVER hit 3 req/sec limit
+      if (processed < bookmarks.length) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
       }
     } catch (e) {
       console.error(`Failed to export bookmark ${bookmark.url} to Notion`, e);
       failed.push(bookmark);
+      processed++;
+      if (onProgress) onProgress(processed, bookmarks.length, `Failed: ${bookmark.title || bookmark.url}`);
     }
   }
 

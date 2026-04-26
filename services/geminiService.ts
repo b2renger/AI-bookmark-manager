@@ -55,7 +55,7 @@ async function fetchTweetContext(url: string, apiKey?: string, proxyUrl?: string
             // Use proxy if provided to avoid CORS on browser
             let requestUrl = apiUrl;
             if (proxyUrl) {
-                if (proxyUrl.includes('corsproxy.io') || proxyUrl.includes('codetabs.com')) {
+                if (proxyUrl.includes('corsproxy.io')) {
                     requestUrl = `${proxyUrl}${encodeURIComponent(apiUrl)}`;
                 } else {
                     requestUrl = `${proxyUrl}${apiUrl}`;
@@ -71,10 +71,10 @@ async function fetchTweetContext(url: string, apiKey?: string, proxyUrl?: string
                 const data = await res.json();
                 return `Tweet content: "${data.data.text}" (Posted: ${data.data.created_at})`;
             } else {
-                console.warn(`Twitter API returned status ${res.status}, falling back.`);
+                // Silently fallback
             }
         } catch (e) {
-            console.warn("Twitter API fetch failed (likely CORS), falling back to Syndication API", e);
+            // Silently fallback to Syndication API
         }
     }
 
@@ -83,7 +83,7 @@ async function fetchTweetContext(url: string, apiKey?: string, proxyUrl?: string
         const syndicationUrl = `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}`;
         let requestUrl = syndicationUrl;
         if (proxyUrl) {
-            if (proxyUrl.includes('corsproxy.io') || proxyUrl.includes('codetabs.com')) {
+            if (proxyUrl.includes('corsproxy.io')) {
                 requestUrl = `${proxyUrl}${encodeURIComponent(syndicationUrl)}`;
             } else {
                 requestUrl = `${proxyUrl}${syndicationUrl}`;
@@ -98,7 +98,7 @@ async function fetchTweetContext(url: string, apiKey?: string, proxyUrl?: string
             }
         }
     } catch (e) {
-        console.warn("Twitter Syndication API failed, falling back to oEmbed", e);
+        // Silently fallback to oEmbed
     }
 
     // Fallback 2: oEmbed (Robust for public tweets)
@@ -106,7 +106,7 @@ async function fetchTweetContext(url: string, apiKey?: string, proxyUrl?: string
         const targetOembed = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`;
         let oembedUrl = targetOembed;
         if (proxyUrl) {
-            if (proxyUrl.includes('corsproxy.io') || proxyUrl.includes('codetabs.com')) {
+            if (proxyUrl.includes('corsproxy.io')) {
                 oembedUrl = `${proxyUrl}${encodeURIComponent(targetOembed)}`;
             } else {
                 oembedUrl = `${proxyUrl}${targetOembed}`;
@@ -125,7 +125,7 @@ async function fetchTweetContext(url: string, apiKey?: string, proxyUrl?: string
             }
         }
     } catch (e) {
-        console.warn("Twitter oEmbed failed", e);
+        // Silently fail
     }
 
     return null;
@@ -158,7 +158,7 @@ async function fetchYouTubeContext(url: string, proxyUrl?: string): Promise<stri
 
     let fetchUrl = targetUrl;
     if (proxyUrl) {
-        if (proxyUrl.includes('corsproxy.io') || proxyUrl.includes('codetabs.com')) {
+        if (proxyUrl.includes('corsproxy.io')) {
             fetchUrl = `${proxyUrl}${encodeURIComponent(targetUrl)}`;
         } else {
             fetchUrl = `${proxyUrl}${targetUrl}`;
@@ -204,7 +204,7 @@ async function fetchYouTubeContext(url: string, proxyUrl?: string): Promise<stri
 /**
  * Generates details for a batch of URLs in a single API call to optimize quota usage.
  */
-export async function generateBookmarksBatch(urls: string[], xApiKey?: string, proxyUrl?: string): Promise<BookmarkResult[]> {
+export async function generateBookmarksBatch(urls: string[], xApiKey?: string, proxyUrl?: string, modelName: string = "gemini-3-flash-preview"): Promise<BookmarkResult[]> {
     if (!process.env.API_KEY) {
         throw new ApiKeyError("API_KEY environment variable is not set.");
     }
@@ -246,7 +246,7 @@ export async function generateBookmarksBatch(urls: string[], xApiKey?: string, p
             `;
             
             const response = await ai.models.generateContent({
-                model: "gemini-3-flash-preview",
+                model: modelName,
                 contents: prompt,
                 config: {
                     tools: [{ googleSearch: {} }],
@@ -303,12 +303,18 @@ export async function generateBookmarksBatch(urls: string[], xApiKey?: string, p
             });
 
         } catch (error: any) {
-            console.error(`Batch Attempt ${attempt + 1} failed:`, error);
+            // Suppress console.error for expected retryable errors to reduce noise
             const message = error?.message || "";
+            if (!message.includes('RESOURCE_EXHAUSTED') && !message.includes('429')) {
+                console.error(`Batch Attempt ${attempt + 1} failed:`, error);
+            }
 
             // Catch specific platform auth errors to trigger re-selection
-            if (message.includes('API key not valid') || message.includes('404') || message.includes('Requested entity was not found.')) {
+            if (message.includes('API key not valid')) {
                 throw new ApiKeyError("API Key invalid or expired.");
+            }
+            if (message.includes('404') || message.includes('Requested entity was not found.')) {
+                throw new Error("Model not found or not supported in this environment. Please select a different Gemini model in Settings.");
             }
 
             if ((message.includes('RESOURCE_EXHAUSTED') || message.includes('429')) && attempt < MAX_RETRIES) {
@@ -324,7 +330,7 @@ export async function generateBookmarksBatch(urls: string[], xApiKey?: string, p
     throw new Error("Batch processing failed.");
 }
 
-export async function generateBookmarkDetails(url: string, xApiKey?: string, proxyUrl?: string): Promise<BookmarkResult> {
-    const results = await generateBookmarksBatch([url], xApiKey, proxyUrl);
+export async function generateBookmarkDetails(url: string, xApiKey?: string, proxyUrl?: string, modelName: string = "gemini-3-flash-preview"): Promise<BookmarkResult> {
+    const results = await generateBookmarksBatch([url], xApiKey, proxyUrl, modelName);
     return results[0];
 }

@@ -26,6 +26,7 @@ export const NotionSyncModal: React.FC<NotionSyncModalProps> = ({
   const [selectedDbId, setSelectedDbId] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [syncStats, setSyncStats] = useState<{ success: Bookmark[]; failed: Bookmark[]; skipped: Bookmark[] }>({ success: [], failed: [], skipped: [] });
+  const [progress, setProgress] = useState({ current: 0, total: 0, message: '' });
 
   useEffect(() => {
     if (isOpen) {
@@ -70,13 +71,15 @@ export const NotionSyncModal: React.FC<NotionSyncModalProps> = ({
     if (!db) return;
 
     setStep('syncing');
+    setProgress({ current: 0, total: bookmarks.length, message: 'Initializing batch export...' });
     try {
       const results = await exportToNotion(
         notionConfig.apiKey, 
         notionConfig.proxyUrl,
         selectedDbId, 
         db.properties, 
-        bookmarks
+        bookmarks,
+        (current, total, message) => setProgress({ current, total, message })
       );
       setSyncStats(results);
       setStep('complete');
@@ -155,8 +158,18 @@ export const NotionSyncModal: React.FC<NotionSyncModalProps> = ({
         {step === 'syncing' && (
             <div className="flex flex-col items-center justify-center py-8">
                 <Spinner className="w-8 h-8 text-blue-500 mb-4" />
-                <p className="text-slate-600 dark:text-slate-300">Syncing bookmarks to Notion...</p>
-                <p className="text-xs text-slate-500 mt-2">Updating schema and adding pages...</p>
+                <p className="text-slate-600 dark:text-slate-300 font-medium mb-1">Syncing to Notion</p>
+                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 mt-4 mb-2">
+                    <div 
+                      className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
+                      style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
+                    ></div>
+                </div>
+                <div className="flex justify-between w-full text-xs text-slate-500 mb-3">
+                    <span>{progress.current} of {progress.total} items</span>
+                    <span>{Math.round(progress.total > 0 ? (progress.current / progress.total) * 100 : 0)}%</span>
+                </div>
+                <p className="text-xs text-slate-500 text-center truncate w-full px-4">{progress.message}</p>
             </div>
         )}
 
@@ -174,7 +187,14 @@ export const NotionSyncModal: React.FC<NotionSyncModalProps> = ({
                         <p className="text-yellow-600 dark:text-yellow-400">Skipped <span className="font-semibold">{syncStats.skipped.length}</span> (already exist).</p>
                     )}
                     {syncStats.failed.length > 0 && (
-                        <p className="text-red-500">Failed to add <span className="font-semibold">{syncStats.failed.length}</span> bookmarks.</p>
+                        <div className="mt-2 text-left bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-800/50">
+                            <p className="text-red-600 dark:text-red-400 font-medium mb-1">Failed to add <span className="font-semibold">{syncStats.failed.length}</span> bookmarks:</p>
+                            <ul className="list-disc list-inside text-xs text-red-500 dark:text-red-300 max-h-24 overflow-y-auto">
+                                {syncStats.failed.map(b => (
+                                    <li key={b.id} className="truncate" title={b.url}>{b.title || b.url}</li>
+                                ))}
+                            </ul>
+                        </div>
                     )}
                 </div>
                 
