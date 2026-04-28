@@ -86,7 +86,7 @@ const App: React.FC = () => {
   const [xApiKey, setXApiKey] = useState<string>('');
   const [notionConfig, setNotionConfig] = useState<{ apiKey: string; proxyUrl: string }>({ 
     apiKey: '', 
-    proxyUrl: 'https://corsproxy.io/?' 
+    proxyUrl: '/api/proxy' 
   });
   const [geminiModel, setGeminiModel] = useState<string>(() => {
     return localStorage.getItem(GEMINI_MODEL_STORAGE_KEY) || 'gemini-3-flash-preview';
@@ -124,7 +124,11 @@ const App: React.FC = () => {
     const storedNotionConfig = localStorage.getItem(NOTION_CONFIG_STORAGE_KEY);
     if (storedNotionConfig) {
         try {
-            setNotionConfig(JSON.parse(storedNotionConfig));
+            const parsedConfig = JSON.parse(storedNotionConfig);
+            if (parsedConfig && parsedConfig.proxyUrl === 'https://corsproxy.io/?') {
+                parsedConfig.proxyUrl = '/api/proxy';
+            }
+            setNotionConfig(parsedConfig);
         } catch (e) {
              // reset if corrupted
         }

@@ -1,4 +1,5 @@
 import { Bookmark, NotionDatabase } from "../types";
+import { proxyFetch } from '../lib/proxyFetch';
 
 const NOTION_API_BASE = "https://api.notion.com/v1";
 const NOTION_VERSION = "2022-06-28";
@@ -13,18 +14,6 @@ export class NotionError extends Error {
 // Helper to handle fetch with Proxy and Headers
 async function notionFetch(endpoint: string, method: string, token: string, proxyUrl: string, body?: any, maxRetries = 5) {
   const targetUrl = `${NOTION_API_BASE}${endpoint}`;
-  
-  // Robust proxy URL construction
-  let fetchUrl = targetUrl;
-  if (proxyUrl) {
-    // corsproxy.io and codetabs usually prefer encoded URLs when passed as a query or path
-    if (proxyUrl.includes('corsproxy.io') || proxyUrl.includes('codetabs.com')) {
-      fetchUrl = `${proxyUrl}${encodeURIComponent(targetUrl)}`;
-    } else {
-      // cors-anywhere and others expect the raw URL appended
-      fetchUrl = `${proxyUrl}${targetUrl}`;
-    }
-  }
 
   const headers: Record<string, string> = {
     "Authorization": `Bearer ${token}`,
@@ -40,15 +29,14 @@ async function notionFetch(endpoint: string, method: string, token: string, prox
       } else {
         console.log(`[NotionFetch] Initiating ${method} to ${endpoint}`);
         console.log(`[NotionFetch] Target URL: ${targetUrl}`);
-        console.log(`[NotionFetch] Final fetch URL: ${fetchUrl}`);
         console.log(`[NotionFetch] Headers (excluding token): Notion-Version=${NOTION_VERSION}`);
       }
 
-      const response = await fetch(fetchUrl, {
+      const response = await proxyFetch(targetUrl, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
-      });
+      }, proxyUrl);
 
       const responseText = await response.text();
 
@@ -81,9 +69,9 @@ async function notionFetch(endpoint: string, method: string, token: string, prox
       if (error instanceof NotionError) throw error;
       
       // Handle network errors (CORS, Proxy down, etc.)
-      console.error(`[NotionFetch] Network error during fetch to ${fetchUrl}:`, error);
+      console.error(`[NotionFetch] Network error during fetch to ${targetUrl}:`, error);
       throw new NotionError(
-        "Network Error: Failed to connect to Notion. If you are using CORSProxy.io, it is likely blocking requests from the AI Studio preview domain. Please switch to 'Worker Proxy (Cloudflare)' in Settings (and follow the unlock instructions), or run the app locally."
+        "Network Error: Failed to connect to Notion. If you are using CORSProxy.io, it is likely blocking requests from the AI Studio preview domain. Please switch to 'Built-in Server Proxy' in Settings, or run the app locally."
       );
     }
   }

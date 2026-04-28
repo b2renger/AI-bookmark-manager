@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { CloseIcon } from './common/Icons';
 import { getAccessibleDatabases } from '../services/notionService';
+import { proxyFetch } from '../lib/proxyFetch';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -15,10 +16,11 @@ interface SettingsModalProps {
 }
 
 const PROXY_PRESETS = [
-    { label: "CORSProxy.io (Recommended)", value: "https://corsproxy.io/?" },
-    { label: "CodeTabs", value: "https://api.codetabs.com/v1/proxy?quest=" },
-    { label: "ThingProxy", value: "https://thingproxy.freeboard.io/fetch/" },
-    { label: "Worker Proxy (Cloudflare)", value: "https://cors-anywhere.herokuapp.com/" },
+    { label: "Built-in Server Proxy (Highly Recommended)", value: "/api/proxy" },
+    { label: "CORSProxy.io (Blocks Preview in AI Studio)", value: "https://corsproxy.io/?" },
+    { label: "CodeTabs (Fails on Preflights)", value: "https://api.codetabs.com/v1/proxy?quest=" },
+    { label: "Worker Proxy (Cloudflare - Set your own URL)", value: "https://your-worker-name.workers.dev/?" },
+    { label: "CORS-Anywhere (Often blocked by X API)", value: "https://cors-anywhere.herokuapp.com/" },
 ];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -82,29 +84,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     
     console.group("X API Connection Test");
     try {
-      // Test the credentials against the /2/users/me endpoint or a public tweet that won't 404
+      // Test the credentials against the /2/tweets endpoint which is accessible with App-only Bearer Tokens
       const apiUrl = `https://api.twitter.com/2/tweets?ids=20`; // Jack's first tweet
-      let requestUrl = apiUrl;
-      if (proxyUrl.trim()) {
-        const proxy = proxyUrl.trim();
-        if (proxy.includes('corsproxy.io')) {
-          requestUrl = `${proxy}${encodeURIComponent(apiUrl)}`;
-        } else {
-          requestUrl = `${proxy}${apiUrl}`;
-        }
-      }
 
       console.log(`[1] Configuration:`);
       console.log(` - Target API: ${apiUrl}`);
       console.log(` - Proxy configured: ${proxyUrl.trim() ? proxyUrl.trim() : 'None'}`);
-      console.log(` - Final fetched URL: ${requestUrl}`);
       console.log(` - Headers sending: { "Authorization": "Bearer <hidden token>" }`);
 
-      const res = await fetch(requestUrl, {
+      const authValue = xKeyValue.trim().replace(/^Bearer\s+/i, '');
+      const res = await proxyFetch(apiUrl, {
         headers: {
-          'Authorization': `Bearer ${xKeyValue.trim()}`
+          'Authorization': `Bearer ${authValue}`
         }
-      });
+      }, proxyUrl.trim() || undefined);
       
       console.log(`[2] Response Received:`);
       console.log(` - Status Code: ${res.status} ${res.statusText}`);
@@ -136,6 +129,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           errMsg += `: ${errData.error}`;
         } else if (rawText) {
           errMsg += ` (Body: ${rawText.substring(0, 100)})`;
+        }
+
+        if (res.status === 503) {
+          errMsg += " - Note: X API often blocks public proxies (like CORS-Anywhere) with 503 errors. Try a different proxy or your own Cloudflare worker.";
         }
 
         console.error(`[3] Test Result: Error - ${errMsg}`);

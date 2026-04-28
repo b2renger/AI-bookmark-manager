@@ -1,5 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
+import { proxyFetch } from '../lib/proxyFetch';
 
 // Custom error to be thrown when API key is invalid
 export class ApiKeyError extends Error {
@@ -17,14 +18,14 @@ function delay(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit = {}) {
+async function fetchWithTimeout(url: string, options: RequestInit = {}, proxyUrl?: string) {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
-        const response = await fetch(url, {
+        const response = await proxyFetch(url, {
             ...options,
             signal: controller.signal
-        });
+        }, proxyUrl);
         clearTimeout(id);
         return response;
     } catch (error) {
@@ -52,21 +53,12 @@ async function fetchTweetContext(url: string, apiKey?: string, proxyUrl?: string
     if (apiKey) {
         try {
             const apiUrl = `https://api.twitter.com/2/tweets/${tweetId}?tweet.fields=text,created_at,author_id`;
-            // Use proxy if provided to avoid CORS on browser
-            let requestUrl = apiUrl;
-            if (proxyUrl) {
-                if (proxyUrl.includes('corsproxy.io')) {
-                    requestUrl = `${proxyUrl}${encodeURIComponent(apiUrl)}`;
-                } else {
-                    requestUrl = `${proxyUrl}${apiUrl}`;
-                }
-            }
-
-            const res = await fetchWithTimeout(requestUrl, {
+            const authValue = apiKey.trim().replace(/^Bearer\s+/i, '');
+            const res = await fetchWithTimeout(apiUrl, {
                 headers: {
-                    'Authorization': `Bearer ${apiKey}`
+                    'Authorization': `Bearer ${authValue}`
                 }
-            });
+            }, proxyUrl);
             if (res.ok) {
                 const data = await res.json();
                 return `Tweet content: "${data.data.text}" (Posted: ${data.data.created_at})`;
@@ -81,16 +73,7 @@ async function fetchTweetContext(url: string, apiKey?: string, proxyUrl?: string
     // Fallback 1: Syndication API (Often works without auth for public tweets)
     try {
         const syndicationUrl = `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}`;
-        let requestUrl = syndicationUrl;
-        if (proxyUrl) {
-            if (proxyUrl.includes('corsproxy.io')) {
-                requestUrl = `${proxyUrl}${encodeURIComponent(syndicationUrl)}`;
-            } else {
-                requestUrl = `${proxyUrl}${syndicationUrl}`;
-            }
-        }
-        
-        const res = await fetchWithTimeout(requestUrl);
+        const res = await fetchWithTimeout(syndicationUrl, {}, proxyUrl);
         if (res.ok) {
             const data = await res.json();
             if (data.text) {
@@ -104,16 +87,7 @@ async function fetchTweetContext(url: string, apiKey?: string, proxyUrl?: string
     // Fallback 2: oEmbed (Robust for public tweets)
     try {
         const targetOembed = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`;
-        let oembedUrl = targetOembed;
-        if (proxyUrl) {
-            if (proxyUrl.includes('corsproxy.io')) {
-                oembedUrl = `${proxyUrl}${encodeURIComponent(targetOembed)}`;
-            } else {
-                oembedUrl = `${proxyUrl}${targetOembed}`;
-            }
-        }
-
-        const res = await fetchWithTimeout(oembedUrl);
+        const res = await fetchWithTimeout(targetOembed, {}, proxyUrl);
         if (res.ok) {
             const data = await res.json();
             // Clean up HTML tags from the blockquote to get raw text
@@ -157,16 +131,9 @@ async function fetchYouTubeContext(url: string, proxyUrl?: string): Promise<stri
     }
 
     let fetchUrl = targetUrl;
-    if (proxyUrl) {
-        if (proxyUrl.includes('corsproxy.io')) {
-            fetchUrl = `${proxyUrl}${encodeURIComponent(targetUrl)}`;
-        } else {
-            fetchUrl = `${proxyUrl}${targetUrl}`;
-        }
-    }
     
     try {
-        const res = await fetchWithTimeout(fetchUrl);
+        const res = await fetchWithTimeout(targetUrl, {}, proxyUrl);
         if (res.ok) {
             const html = await res.text();
             
