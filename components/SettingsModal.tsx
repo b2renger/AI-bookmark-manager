@@ -62,8 +62,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   if (!isOpen) return null;
 
   const handleSave = () => {
-    onSaveXApiKey(xKeyValue.trim());
-    onSaveNotionConfig({ apiKey: notionKey.trim(), proxyUrl: proxyUrl.trim() });
+    const sanitizedXKey = xKeyValue.trim().replace(/^["']|["']$/g, '').replace(/^Bearer\s+/i, '').trim();
+    const sanitizedNotionKey = notionKey.trim().replace(/^["']|["']$/g, '').trim();
+    onSaveXApiKey(sanitizedXKey);
+    onSaveNotionConfig({ apiKey: sanitizedNotionKey, proxyUrl: proxyUrl.trim() });
     onSaveGeminiModel(localGeminiModel);
     onClose();
   };
@@ -76,7 +78,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleTestXConnection = async () => {
-    if (!xKeyValue.trim()) {
+    const cleanKey = xKeyValue.trim().replace(/^["']|["']$/g, '').replace(/^Bearer\s+/i, '').trim();
+    if (!cleanKey) {
       setTestXStatus({ loading: false, error: "Please enter an X API Bearer Token first.", success: null });
       return;
     }
@@ -89,29 +92,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       console.log(`[1] Configuration:`);
       console.log(` - Target API: ${apiUrl}`);
-      console.log(` - Proxy configured: ${proxyUrl.trim() ? proxyUrl.trim() : 'None'}`);
-      console.log(` - Headers sending: { "Authorization": "Bearer <hidden token>" }`);
+      console.log(` - Proxy configured: ${proxyUrl.trim() ? proxyUrl.trim() : '/api/proxy (Built-in)'}`);
+      console.log(` - Headers sending: { "Authorization": "Bearer ${cleanKey.substring(0, 8)}..." }`);
 
-      const authValue = xKeyValue.trim().replace(/^Bearer\s+/i, '');
       const res = await proxyFetch(apiUrl, {
         headers: {
-          'Authorization': `Bearer ${authValue}`
+          'Authorization': `Bearer ${cleanKey}`
         }
       }, proxyUrl.trim() || undefined);
       
       console.log(`[2] Response Received:`);
       console.log(` - Status Code: ${res.status} ${res.statusText}`);
-      console.log(` - Headers:`, Object.fromEntries(res.headers.entries()));
 
       let errData = null;
       let rawText = '';
       try {
         rawText = await res.text();
-        console.log(` - Body (raw text):`, rawText);
         errData = JSON.parse(rawText);
-        console.log(` - Body (parsed JSON):`, errData);
       } catch(e) {
-        console.log(` - Body (could not parse as JSON, raw text maintained)`);
+        // Raw text maintained
       }
 
       if (res.ok) {
@@ -122,21 +121,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           success: `Success! Connected to X API.` 
         });
       } else {
-        let errMsg = `Status ${res.status}`;
+        let errMsg = `Status ${res.status}: ${res.statusText || 'Error'}`;
         if (errData && errData.title) {
-          errMsg += `: ${errData.title}`;
+          errMsg = `Status ${res.status}: ${errData.title}`;
+          if (errData.detail) errMsg += ` (${errData.detail})`;
         } else if (errData && errData.error) {
-          errMsg += `: ${errData.error}`;
-        } else if (rawText) {
-          errMsg += ` (Body: ${rawText.substring(0, 100)})`;
+          errMsg = `Status ${res.status}: ${errData.error}`;
         }
 
-        if (res.status === 503) {
-          errMsg += " - Note: X API often blocks public proxies (like CORS-Anywhere) with 503 errors. Try a different proxy or your own Cloudflare worker.";
+        if (res.status === 401) {
+          errMsg += " — Invalid token. Ensure you pasted the App 'Bearer Token' (starts with AAAAA...) from developer.x.com, not the API Key or Secret.";
+        } else if (res.status === 403) {
+          errMsg += " — Forbidden. Ensure your X Developer project has access enabled for v2 Tweet lookup.";
+        } else if (res.status === 503) {
+          errMsg += " — X API often blocks public CORS proxies. Switch proxy to 'Built-in Server Proxy'.";
         }
 
         console.error(`[3] Test Result: Error - ${errMsg}`);
-        setTestXStatus({ loading: false, error: `Failed to connect: ${errMsg}`, success: null });
+        setTestXStatus({ loading: false, error: errMsg, success: null });
       }
     } catch (e: any) {
       console.error(`[3] Test Result: Exception - ${e.message}`, e);
@@ -146,7 +148,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleTestConnection = async () => {
-    if (!notionKey.trim()) {
+    const cleanToken = notionKey.trim().replace(/^["']|["']$/g, '').trim();
+    if (!cleanToken) {
       setTestStatus({ loading: false, error: "Please enter a Notion Integration Token first.", success: null });
       return;
     }
@@ -155,11 +158,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     console.group("Notion API Connection Test");
     console.log(`[1] Configuration`);
     console.log(` - Target Endpoint: /search`);
-    console.log(` - Proxy used: ${proxyUrl.trim()}`);
-    console.log(` - Auth Token (first 5 chars): ${notionKey.trim().substring(0, 5)}...`);
+    console.log(` - Proxy used: ${proxyUrl.trim() || '/api/proxy (Built-in)'}`);
+    console.log(` - Auth Token (first 5 chars): ${cleanToken.substring(0, 5)}...`);
     
     try {
-      const dbs = await getAccessibleDatabases(notionKey.trim(), proxyUrl.trim());
+      const dbs = await getAccessibleDatabases(cleanToken, proxyUrl.trim());
       console.log(`[2] Result: Success. Found ${dbs.length} database(s).`);
       setTestStatus({ 
         loading: false, 
@@ -206,21 +209,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onChange={(e) => setLocalGeminiModel(e.target.value)}
               className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-colors dark:text-white text-sm"
             >
-              <optgroup label="Gemini 3.1">
-                <option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Flash Lite Preview (Fast)</option>
-                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview (High Quality)</option>
+              <optgroup label="Gemini 3 Flash">
+                <option value="gemini-3.7-flash">Gemini 3.7 Flash (Default / Recommended)</option>
+                <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+                <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+                <option value="gemini-flash-latest">Gemini Flash Latest</option>
+                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite (High Throughput / Light)</option>
               </optgroup>
-              <optgroup label="Gemini 3">
-                <option value="gemini-3-flash-preview">Gemini 3 Flash Preview (Default)</option>
-              </optgroup>
-              <optgroup label="Legacy">
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-                <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash-8B</option>
+              <optgroup label="Gemini 3 Pro">
+                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview (High Reasoning)</option>
               </optgroup>
             </select>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Select a cheaper model like <strong>Flash-8B</strong> if you are hitting rate limits (429 RESOURCE_EXHAUSTED). Note: Gemma models are not supported in this preview environment.
+              Select a lighter model like <strong>Gemini 3.1 Flash Lite</strong> if you are operating on a free tier or processing large lists.
             </p>
           </div>
 
@@ -235,11 +236,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               type="password"
               value={xKeyValue}
               onChange={(e) => setXKeyValue(e.target.value)}
-              placeholder="Enter X Bearer Token"
+              placeholder="Enter X App Bearer Token (AAAA...)"
               className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-colors dark:text-white"
             />
              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 mb-4">
-               Allows fetching tweet text context. Falls back to oEmbed if empty or blocked.
+               Requires the v2 <strong>Bearer Token</strong> (starts with AAAA...) from your X Developer App. If omitted or unauthorized, public tweets automatically fall back to oEmbed scraping.
              </p>
             <div className="pt-2 border-t border-slate-200 dark:border-slate-600">
               <button

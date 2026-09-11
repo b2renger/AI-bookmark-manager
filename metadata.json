@@ -1,5 +1,6 @@
 {
   "name": "AI Bookmark Manager",
   "description": "An application to import a list of URLs, generate AI-powered summaries and keywords for them, allow editing, and export them in a Chrome-compatible format.",
-  "requestFramePermissions": ["screen-wake-lock"]
+  "requestFramePermissions": ["screen-wake-lock"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

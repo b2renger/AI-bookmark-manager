@@ -61,20 +61,19 @@ export const UrlInput: React.FC<UrlInputProps> = ({ onProcess, isLoading, onOpen
           Import Bookmarks
         </label>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-          Paste one URL per line or the content of a bookmarks HTML file. The AI will generate a title, summary, and keywords for each.
+          Paste links from <strong>YouTube</strong> (videos, shorts, playlists), <strong>Threads</strong>, <strong>X/Twitter</strong>, or any web article. The AI extracts metadata, generates summaries, and calculates confidence scores.
         </p>
 
-        <div className="mb-4 bg-blue-50 dark:bg-slate-700/50 rounded-lg p-4 border border-blue-100 dark:border-slate-600 flex items-start gap-3">
+        <div className="mb-4 bg-blue-50/60 dark:bg-slate-750 rounded-xl p-4 border border-blue-100 dark:border-slate-700 flex items-start gap-3">
              <div className="text-blue-500 dark:text-blue-400 mt-0.5">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                   <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                 </svg>
              </div>
              <div className="text-xs text-slate-600 dark:text-slate-300">
-                <p className="font-semibold text-slate-800 dark:text-slate-200 mb-1">Integration Setup</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200 mb-1">Deep Platform Extraction & Confidence Scoring</p>
                 <p>
-                    To generate summaries for <strong>X (Twitter)</strong> posts or to sync your bookmarks with a <strong>Notion</strong> database, 
-                    please ensure you have configured your tokens in the <button type="button" onClick={onOpenSettings} className="text-blue-600 dark:text-blue-400 hover:underline font-medium inline-flex items-center">Settings</button>.
+                    YouTube titles, channels, and descriptions as well as Threads post contents are automatically scraped and grounded. Each AI summary includes a <strong>Confidence Score (0-100%)</strong> with explanation.
                 </p>
              </div>
         </div>
@@ -83,9 +82,9 @@ export const UrlInput: React.FC<UrlInputProps> = ({ onProcess, isLoading, onOpen
           id="url-input"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={"https://example.com/article-1\nhttps://anothersite.org/important-info\nOr paste content from a bookmarks.html file..."}
-          rows={6}
-          className="w-full p-3 bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+          placeholder={"https://www.youtube.com/watch?v=dQw4w9WgXcQ\nhttps://www.threads.net/@zuck/post/...\nhttps://example.com/deep-dive-article\nOr paste content from a bookmarks.html file..."}
+          rows={5}
+          className="w-full p-3.5 bg-slate-50 dark:bg-slate-700/80 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm"
           disabled={isLoading}
         />
         <button

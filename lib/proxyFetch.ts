@@ -2,9 +2,10 @@ export async function proxyFetch(targetUrl: string, init?: RequestInit, proxyUrl
   const method = init?.method || 'GET';
   const headers = (init?.headers as Record<string, string>) || {};
   const body = init?.body;
+  const chosenProxy = proxyUrl?.trim() || '/api/proxy';
 
   // If using our built-in proxy
-  if (proxyUrl === '/api/proxy') {
+  if (chosenProxy === '/api/proxy') {
     return fetch('/api/proxy', {
       method: 'POST',
       headers: {
@@ -21,11 +22,11 @@ export async function proxyFetch(targetUrl: string, init?: RequestInit, proxyUrl
 
   // If using a classic external CORS proxy that appends URLs
   let requestUrl = targetUrl;
-  if (proxyUrl) {
-    if (proxyUrl.includes('corsproxy.io') || proxyUrl.includes('cors-anywhere')) {
-      requestUrl = `${proxyUrl}${encodeURIComponent(targetUrl)}`;
+  if (chosenProxy && chosenProxy !== 'none') {
+    if (chosenProxy.includes('corsproxy.io') || chosenProxy.includes('cors-anywhere')) {
+      requestUrl = `${chosenProxy}${encodeURIComponent(targetUrl)}`;
     } else {
-      requestUrl = `${proxyUrl}${targetUrl}`;
+      requestUrl = `${chosenProxy}${targetUrl}`;
     }
   }
 

@@ -9,6 +9,11 @@ export interface Bookmark {
   createdAt: string; // ISO date string
   sources?: { uri: string; title: string }[];
   errorMessage?: string;
+  confidenceScore?: number; // 0 to 100
+  confidenceReason?: string;
+  platform?: 'youtube' | 'threads' | 'twitter' | 'github' | 'article' | 'website';
+  author?: string;
+  thumbnailUrl?: string;
 }
 
 export interface NotionDatabase {

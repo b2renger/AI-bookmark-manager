@@ -15,8 +15,8 @@ const THEME_STORAGE_KEY = 'ai-bookmark-manager-theme';
 const X_API_KEY_STORAGE_KEY = 'ai-bookmark-manager-x-api-key';
 const NOTION_CONFIG_STORAGE_KEY = 'ai-bookmark-manager-notion-config';
 const GEMINI_MODEL_STORAGE_KEY = 'ai-bookmark-manager-gemini-model';
-const BATCH_SIZE = 5; // Efficiently process 5 URLs per call to stay under TPM while reducing RPM
-const BATCH_DELAY_MS = 5000; // 5 seconds wait between batches to safely respect 15 RPM limits
+const BATCH_SIZE = 3; // Process 3 URLs per call to stay strictly within rate limits
+const BATCH_DELAY_MS = 4000; // 4 seconds delay between batches to respect 15 RPM constraints
 
 const playSuccessChime = () => {
   try {
@@ -89,7 +89,12 @@ const App: React.FC = () => {
     proxyUrl: '/api/proxy' 
   });
   const [geminiModel, setGeminiModel] = useState<string>(() => {
-    return localStorage.getItem(GEMINI_MODEL_STORAGE_KEY) || 'gemini-3-flash-preview';
+    const stored = localStorage.getItem(GEMINI_MODEL_STORAGE_KEY);
+    const validModels = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
+    if (stored && validModels.includes(stored)) {
+      return stored;
+    }
+    return 'gemini-3.7-flash';
   });
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -258,13 +263,18 @@ const App: React.FC = () => {
                 results.forEach(res => {
                     const idx = next.findIndex(b => b.url === res.url && b.status === 'processing');
                     if (idx !== -1) {
-                        const isWarning = !res.summary || res.summary.length < 10;
+                        const isWarning = !res.summary || res.summary.length < 10 || res.summary.includes('quota') || res.summary.includes('rate limit');
                         next[idx] = {
                             ...next[idx],
                             title: res.title,
                             summary: res.summary,
                             keywords: res.keywords,
                             sources: res.sources,
+                            confidenceScore: res.confidenceScore,
+                            confidenceReason: res.confidenceReason,
+                            platform: res.platform,
+                            author: res.author,
+                            thumbnailUrl: res.thumbnailUrl,
                             // If the AI found a specific publication date, prefer it. Otherwise keep imported date.
                             createdAt: res.publicationDate || next[idx].createdAt,
                             status: isWarning ? 'warning' : 'done',
@@ -308,7 +318,7 @@ const App: React.FC = () => {
     
     setIsLoading(false);
     playSuccessChime();
-  }, [bookmarks, xApiKey, notionConfig.proxyUrl]);
+  }, [bookmarks, xApiKey, notionConfig.proxyUrl, geminiModel]);
 
   const handleUpdateBookmark = useCallback((updated: Bookmark) => {
     setBookmarks(prev => prev.map(b => (b.id === updated.id ? updated : b)));
@@ -350,14 +360,20 @@ const App: React.FC = () => {
         ]);
 
         const res = result[0];
+        const isWarning = !res.summary || res.summary.length < 10 || res.summary.includes('quota') || res.summary.includes('rate limit');
         setBookmarks(prev => prev.map(b => b.id === id ? {
             ...b,
             title: res.title,
             summary: res.summary,
             keywords: res.keywords,
             sources: res.sources,
+            confidenceScore: res.confidenceScore,
+            confidenceReason: res.confidenceReason,
+            platform: res.platform,
+            author: res.author,
+            thumbnailUrl: res.thumbnailUrl,
             createdAt: res.publicationDate || b.createdAt,
-            status: (!res.summary || res.summary.length < 10) ? 'warning' : 'done'
+            status: isWarning ? 'warning' : 'done'
         } : b));
     } catch (e: any) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -368,7 +384,7 @@ const App: React.FC = () => {
         }
         setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'error', errorMessage: msg || "Retry failed", title: b.title === 'Updating...' ? 'Untitled' : b.title } : b));
     }
-  }, [bookmarks, xApiKey, notionConfig.proxyUrl]);
+  }, [bookmarks, xApiKey, notionConfig.proxyUrl, geminiModel]);
 
   // Selection Handlers
   const handleToggleSelect = useCallback((id: string) => {

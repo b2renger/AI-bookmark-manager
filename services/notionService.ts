@@ -128,6 +128,22 @@ async function ensureDatabaseSchema(token: string, proxyUrl: string, databaseId:
         propertiesToUpdate['Date'] = { date: {} };
     }
 
+    // 5. Platform (Type: select) -> "Platform"
+    if (!hasProperty('Platform', 'select')) {
+        propertiesToUpdate['Platform'] = {
+            select: {
+                options: [
+                    { name: 'YouTube', color: 'red' },
+                    { name: 'Threads', color: 'gray' },
+                    { name: 'Twitter', color: 'blue' },
+                    { name: 'GitHub', color: 'purple' },
+                    { name: 'Article', color: 'green' },
+                    { name: 'Website', color: 'default' }
+                ]
+            }
+        };
+    }
+
     if (Object.keys(propertiesToUpdate).length > 0) {
         await notionFetch(`/databases/${databaseId}`, "PATCH", token, proxyUrl, {
             properties: propertiesToUpdate
@@ -141,7 +157,8 @@ export async function exportToNotion(
   databaseId: string, 
   databaseProperties: Record<string, any>, 
   bookmarks: Bookmark[],
-  onProgress?: (current: number, total: number, message: string) => void
+  onProgress?: (current: number, total: number, message: string) => void,
+  forceSync?: boolean
 ): Promise<{ success: Bookmark[]; failed: Bookmark[]; skipped: Bookmark[] }> {
   
   if (onProgress) onProgress(0, bookmarks.length, "Updating database schema...");
@@ -162,48 +179,50 @@ export async function exportToNotion(
   const existingUrls = new Set<string>();
 
   // 3. Batch query existing URLs to save API requests (max 50 conditions per OR filter to be safe)
-  const CHUNK_SIZE = 50;
-  for (let i = 0; i < bookmarks.length; i += CHUNK_SIZE) {
-    const chunk = bookmarks.slice(i, i + CHUNK_SIZE);
-    if (onProgress) onProgress(0, bookmarks.length, `Checking existing bookmarks (Batch ${Math.floor(i/CHUNK_SIZE) + 1})...`);
-    
-    const orConditions = chunk.map(b => ({
-      property: "URL",
-      url: { equals: b.url }
-    }));
+  if (!forceSync) {
+    const CHUNK_SIZE = 50;
+    for (let i = 0; i < bookmarks.length; i += CHUNK_SIZE) {
+      const chunk = bookmarks.slice(i, i + CHUNK_SIZE);
+      if (onProgress) onProgress(0, bookmarks.length, `Checking existing bookmarks (Batch ${Math.floor(i/CHUNK_SIZE) + 1})...`);
+      
+      const orConditions = chunk.map(b => ({
+        property: "URL",
+        url: { equals: b.url }
+      }));
 
-    try {
-      let hasMore = true;
-      let nextCursor: string | undefined = undefined;
+      try {
+        let hasMore = true;
+        let nextCursor: string | undefined = undefined;
 
-      while (hasMore) {
-        const body: any = { filter: { or: orConditions } };
-        if (nextCursor) body.start_cursor = nextCursor;
+        while (hasMore) {
+          const body: any = { filter: { or: orConditions } };
+          if (nextCursor) body.start_cursor = nextCursor;
 
-        const queryResult = await notionFetch(`/databases/${databaseId}/query`, "POST", token, proxyUrl, body);
+          const queryResult = await notionFetch(`/databases/${databaseId}/query`, "POST", token, proxyUrl, body);
 
-        if (queryResult.results) {
-          queryResult.results.forEach((page: any) => {
-            const urlProp = Object.values(page.properties).find((p: any) => p.type === 'url');
-            if (urlProp && typeof urlProp === 'object' && 'url' in urlProp && urlProp.url) {
-              existingUrls.add(urlProp.url);
-            }
-          });
+          if (queryResult.results) {
+            queryResult.results.forEach((page: any) => {
+              const urlProp = Object.values(page.properties).find((p: any) => p.type === 'url');
+              if (urlProp && typeof urlProp === 'object' && 'url' in urlProp && urlProp.url) {
+                existingUrls.add(urlProp.url);
+              }
+            });
+          }
+
+          hasMore = queryResult.has_more;
+          nextCursor = queryResult.next_cursor;
+          
+          // Minor delay between paginated queries
+          if (hasMore) await new Promise(resolve => setTimeout(resolve, 500));
         }
-
-        hasMore = queryResult.has_more;
-        nextCursor = queryResult.next_cursor;
-        
-        // Minor delay between paginated queries
-        if (hasMore) await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (e) {
+        console.warn("Failed to query existing URLs in batch, falling back to inserting all.", e);
       }
-    } catch (e) {
-      console.warn("Failed to query existing URLs in batch, falling back to inserting all.", e);
-    }
-    
-    // Delay between chunks
-    if (bookmarks.length > CHUNK_SIZE && i + CHUNK_SIZE < bookmarks.length) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Delay between chunks
+      if (bookmarks.length > CHUNK_SIZE && i + CHUNK_SIZE < bookmarks.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
   }
 
@@ -254,6 +273,21 @@ export async function exportToNotion(
       properties['Date'] = {
         date: { start: dateVal }
       };
+
+      // Platform
+      if (bookmark.platform) {
+        const platformNameMap: Record<string, string> = {
+          youtube: 'YouTube',
+          threads: 'Threads',
+          twitter: 'Twitter',
+          github: 'GitHub',
+          article: 'Article',
+          website: 'Website',
+        };
+        properties['Platform'] = {
+          select: { name: platformNameMap[bookmark.platform] || 'Website' }
+        };
+      }
 
       // Content Body (Sources)
       const children = [];
