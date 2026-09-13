@@ -24,7 +24,6 @@
     "test:scale": "cross-env CAIRN_FIXTURE=.fixtures/library-100k.db vitest run --project scale",
     "test:e2e": "playwright test -c apps/desktop/playwright.config.ts",
     "fixture:gen": "node packages/core/scripts/genFixture.ts",
-    "migrations": "node apps/desktop/scripts/gen-migrations.mjs",
     "i18n:check": "node apps/desktop/scripts/check-i18n.mjs",
     "rebuild": "npm -w @cairn/desktop run rebuild",
     "package": "npm run lint && npm run typecheck && npm run rebuild && npm -w @cairn/desktop run build && electron-builder -c apps/desktop/electron-builder.yml --publish never",
