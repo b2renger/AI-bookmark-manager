@@ -1,0 +1,81 @@
+{
+  "import": {
+    "title": "Import bookmarks",
+    "subtitle": "Nothing is written to the database before you have seen the dedupe report.",
+    "steps": "Import steps",
+    "step": {
+      "pick": "Source",
+      "map": "Columns",
+      "preview": "Report",
+      "committing": "Writing",
+      "done": "Done"
+    },
+    "source": {
+      "file": "From a file",
+      "fileHint": "Netscape export (.html), Raindrop / Pocket / Karakeep (.csv, .json), Chromium or Firefox profile.",
+      "choose": "Choose a file…",
+      "paste": "From a paste",
+      "pasteHint": "Paste the contents of a bookmarks file, or a plain list of URLs.",
+      "pastePlaceholder": "https://example.com/article\n<DT><A HREF=\"https://example.com\" ADD_DATE=\"1700000000\">Example</A>",
+      "usePaste": "Use this text"
+    },
+    "importer": {
+      "label": "Format: {{importer}}",
+      "detected": "Detected format: {{importer}}",
+      "auto": "auto-detect",
+      "netscape": "Netscape (bookmarks.html)",
+      "chromium": "Chromium / Chrome / Edge",
+      "firefox": "Firefox (places.sqlite)",
+      "raindrop": "Raindrop.io",
+      "karakeep": "Karakeep",
+      "pocket": "Pocket",
+      "csv": "Generic CSV",
+      "json": "Generic JSON"
+    },
+    "analyse": "Analyse",
+    "back": "Back",
+    "commit": "Import {{n}} link(s)",
+    "restart": "Start over",
+    "enqueueFetch": "Queue the new links for fetching",
+    "report": {
+      "total": "Rows read",
+      "new": "New",
+      "duplicates": "Duplicates",
+      "malformed": "Malformed",
+      "duplicatesSample": "Show the first {{n}} duplicates",
+      "malformedSample": "Show the first {{n}} malformed lines"
+    },
+    "malformed": {
+      "invalidUrl": "Invalid URL",
+      "unsupportedScheme": "Unsupported scheme",
+      "empty": "Empty line",
+      "parseError": "Unreadable line"
+    },
+    "field": {
+      "url": "Address (URL)",
+      "title": "Title",
+      "tags": "Tags",
+      "folderPath": "Folder",
+      "createdAt": "Added date",
+      "note": "Note",
+      "ignore": "Ignore"
+    },
+    "mapColumn": "Column “{{header}}”",
+    "mappedTo": "→ {{field}}",
+    "urlRequired": "One column must be mapped to the address (URL) before continuing.",
+    "phase": {
+      "parsing": "Parsing",
+      "deduping": "Deduping",
+      "inserting": "Writing",
+      "indexing": "Indexing",
+      "done": "Done",
+      "error": "Failed"
+    },
+    "progressCount": "{{done}} / {{total}}",
+    "done": {
+      "title": "Import finished",
+      "body": "{{n}} link(s) added, {{skipped}} skipped.",
+      "toLibrary": "Open the library"
+    }
+  }
+}

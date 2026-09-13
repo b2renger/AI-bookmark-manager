@@ -1,0 +1,18 @@
+{
+  "egress": {
+    "title": "Sorties réseau",
+    "subtitle": "Chaque octet qui quitte cette machine est journalisé ici, y compris les vérifications de mise à jour.",
+    "column": {
+      "time": "Date",
+      "host": "Hôte",
+      "purpose": "Motif",
+      "bytes": "Octets",
+      "result": "Résultat",
+      "bookmark": "Lien concerné"
+    },
+    "empty": {
+      "title": "Rien n'a encore quitté cette machine",
+      "body": "En P0, Cairn ne fait aucune requête réseau : l'import, la recherche et l'export sont entièrement locaux."
+    }
+  }
+}

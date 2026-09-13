@@ -1,0 +1,18 @@
+{
+  "egress": {
+    "title": "Network egress",
+    "subtitle": "Every byte that leaves this machine is logged here, update checks included.",
+    "column": {
+      "time": "Time",
+      "host": "Host",
+      "purpose": "Purpose",
+      "bytes": "Bytes",
+      "result": "Result",
+      "bookmark": "Bookmark"
+    },
+    "empty": {
+      "title": "Nothing has left this device yet",
+      "body": "In P0 Cairn makes no network request at all: import, search and export are entirely local."
+    }
+  }
+}

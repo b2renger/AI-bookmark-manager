@@ -1,0 +1,35 @@
+{
+  "errors": {
+    "unknown": "Une erreur inattendue s'est produite.",
+    "ipcUnavailable": "Le pont avec le processus principal est indisponible : relancez l'application.",
+    "notWiredYet": "Cette action n'est pas encore branchée côté processus principal (intégration P0).",
+    "app": {
+      "info": "Impossible de lire les informations de l'application."
+    },
+    "settings": {
+      "load": "Impossible de charger les réglages.",
+      "save": "Impossible d'enregistrer les réglages."
+    },
+    "library": {
+      "query": "La recherche dans la bibliothèque a échoué.",
+      "get": "Impossible d'ouvrir cette fiche.",
+      "save": "L'ajout des liens a échoué.",
+      "applyOps": "La modification n'a pas pu être enregistrée.",
+      "bulkEdit": "L'action groupée a échoué."
+    },
+    "import": {
+      "preview": "L'analyse du fichier a échoué : rien n'a été écrit.",
+      "commit": "L'import a échoué : la transaction a été annulée."
+    },
+    "export": {
+      "run": "L'export a échoué."
+    },
+    "dialog": {
+      "openFile": "Impossible d'ouvrir le sélecteur de fichier.",
+      "openDir": "Impossible d'ouvrir le sélecteur de dossier."
+    },
+    "shell": {
+      "openExternal": "Impossible d'ouvrir ce lien dans le navigateur."
+    }
+  }
+}

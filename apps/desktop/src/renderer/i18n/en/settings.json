@@ -1,0 +1,42 @@
+{
+  "settings": {
+    "title": "Settings",
+    "locale": {
+      "title": "Language",
+      "help": "French is the source language; English is the fallback.",
+      "fr": "French",
+      "en": "English"
+    },
+    "theme": {
+      "title": "Theme",
+      "help": "Dark by default. The choice applies immediately and is saved.",
+      "dark": "Dark",
+      "light": "Light"
+    },
+    "ai": {
+      "title": "AI providers",
+      "help": "Nothing leaves the machine in P0.",
+      "body": "Local models and remote providers are configured in phase P4. Until they are enabled, no data leaves this machine."
+    },
+    "export": {
+      "title": "Export",
+      "help": "Writes the selected files into a folder on your disk.",
+      "run": "Export…",
+      "target": {
+        "json": "bookmarks.json",
+        "netscape": "bookmarks.html (Netscape)",
+        "markdown": "Markdown",
+        "db": "SQLite database copy"
+      }
+    },
+    "about": {
+      "title": "About",
+      "version": "Version",
+      "platform": "Platform",
+      "platformValue": "{{platform}} / {{arch}}",
+      "userData": "Data folder",
+      "database": "Database",
+      "unavailable": "Information unavailable: the main process did not answer."
+    }
+  }
+}

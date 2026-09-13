@@ -3,6 +3,7 @@
 // nobody reads.
 import tseslint from 'typescript-eslint';
 import importX from 'eslint-plugin-import-x';
+import i18next from 'eslint-plugin-i18next';
 
 const NODE_BUILTINS = [
   'fs', 'path', 'os', 'crypto', 'child_process', 'worker_threads', 'http', 'https', 'net', 'tls',
@@ -82,5 +83,51 @@ export default tseslint.config(
   {
     files: ['**/*.cjs'],
     rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+
+  // ── D: no hardcoded user-visible string (P0 task 15, enforcement layer 1) ───────────────
+  // Every string a user can read goes through `t`. eslint-plugin-i18next 6 dropped the old
+  // `markupOnly` flag; its successor is mode 'jsx-only', which checks JSX text AND JSX
+  // attributes — strictly stronger than the default 'jsx-text-only', which ignores
+  // placeholder / title / aria-label / alt entirely. SVG tags are exempt inside the plugin, and
+  // native DOM attributes are allowed except that user-visible four.
+  // The exclude list below is the allowlist: layout and behaviour props, never copy.
+  // Layer 2 is apps/desktop/scripts/check-i18n.mjs (`npm run i18n:check`).
+  {
+    files: ['apps/desktop/src/renderer/**/*.tsx', 'packages/ui/src/**/*.tsx'],
+    ignores: ['**/*.test.tsx'],
+    plugins: { i18next },
+    rules: {
+      'i18next/no-literal-string': ['error', {
+        mode: 'jsx-only',
+        'jsx-attributes': {
+          exclude: [
+            // layout / identity
+            'className', 'styleName', 'style', 'type', 'key', 'id', 'htmlFor', 'name',
+            'width', 'height', 'viewBox', 'lang', 'dir', 'href', 'rel', 'target',
+            // design-system props, never copy
+            'variant', 'size', 'tone', 'icon', 'kind', 'field', 'screen', 'phase', 'source',
+            'mode', 'colSpan', 'rowSpan', 'autoComplete', 'inputMode', 'accept', 'as',
+            // test hooks and non-textual aria
+            'data-.*', 'aria-hidden', 'aria-live', 'aria-current', 'aria-pressed', 'role',
+          ],
+        },
+        words: {
+          // Acronyms, numbers and punctuation-only nodes are already excluded by default;
+          // these are the separators the chrome renders literally.
+          exclude: ['[0-9!-/:-@[-`{-~]+', '[A-Z_-]+', '\\s*[·—→/|]\\s*'],
+        },
+        callees: {
+          // The plugin's own defaults (this option replaces them, it does not merge) …
+          exclude: [
+            'i18n(ext)?', 't', 'require', 'addEventListener', 'removeEventListener',
+            'postMessage', 'getElementById', 'dispatch', 'commit', 'includes', 'indexOf',
+            'endsWith', 'startsWith',
+            // … plus React/Zustand state setters, whose arguments are enum members, not copy.
+            'set[A-Z].*',
+          ],
+        },
+      }],
+    },
   },
 );

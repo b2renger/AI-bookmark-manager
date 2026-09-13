@@ -7,5 +7,48 @@
     "platform": "Platform",
     "database": "Database",
     "loading": "Loading"
+  },
+  "common": {
+    "loading": "Loading",
+    "close": "Close",
+    "dismiss": "Dismiss",
+    "cancel": "Cancel",
+    "back": "Back",
+    "retry": "Retry",
+    "confirm": "Confirm"
+  },
+  "nav": {
+    "label": "Main navigation",
+    "later": "later",
+    "library": "Library",
+    "import": "Import",
+    "map": "Map",
+    "tree": "Tree",
+    "review": "Review",
+    "ask": "Ask",
+    "sharing": "Sharing",
+    "egress": "Network egress",
+    "settings": "Settings"
+  },
+  "theme": {
+    "toggle": "Switch theme",
+    "dark": "Dark theme",
+    "light": "Light theme"
+  },
+  "locale": {
+    "label": "Interface language",
+    "fr": "French",
+    "en": "English"
+  },
+  "placeholder": {
+    "body": "This screen arrives in phase P{{phase}}."
+  },
+  "toast": {
+    "saved": "{{n}} link(s) added · {{duplicates}} duplicate(s) · {{rejected}} rejected",
+    "nothingToSave": "No link recognised in that text.",
+    "bulkApplied": "{{n}} bookmark(s) changed.",
+    "imported": "{{n}} link(s) imported.",
+    "exported": "{{n}} file(s) written.",
+    "settingsNotPersisted": "Setting applied but not saved: the main process did not answer."
   }
 }

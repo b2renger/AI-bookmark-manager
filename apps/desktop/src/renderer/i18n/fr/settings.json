@@ -1,0 +1,42 @@
+{
+  "settings": {
+    "title": "Réglages",
+    "locale": {
+      "title": "Langue",
+      "help": "Le français est la langue de référence ; l'anglais sert de repli.",
+      "fr": "Français",
+      "en": "Anglais"
+    },
+    "theme": {
+      "title": "Thème",
+      "help": "Sombre par défaut. Le choix est appliqué immédiatement et enregistré.",
+      "dark": "Sombre",
+      "light": "Clair"
+    },
+    "ai": {
+      "title": "Fournisseurs d'IA",
+      "help": "Rien n'est envoyé à l'extérieur en P0.",
+      "body": "Les modèles locaux et les fournisseurs distants se configurent à la phase P4. Tant qu'ils ne sont pas activés, aucune donnée ne quitte cette machine."
+    },
+    "export": {
+      "title": "Exporter",
+      "help": "Écrit les fichiers choisis dans un dossier de votre disque.",
+      "run": "Exporter…",
+      "target": {
+        "json": "bookmarks.json",
+        "netscape": "bookmarks.html (Netscape)",
+        "markdown": "Markdown",
+        "db": "Copie de la base SQLite"
+      }
+    },
+    "about": {
+      "title": "À propos",
+      "version": "Version",
+      "platform": "Plateforme",
+      "platformValue": "{{platform}} / {{arch}}",
+      "userData": "Dossier de données",
+      "database": "Base de données",
+      "unavailable": "Informations indisponibles : le processus principal n'a pas répondu."
+    }
+  }
+}

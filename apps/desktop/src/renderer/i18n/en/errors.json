@@ -1,0 +1,35 @@
+{
+  "errors": {
+    "unknown": "An unexpected error occurred.",
+    "ipcUnavailable": "The bridge to the main process is unavailable: restart the application.",
+    "notWiredYet": "This action is not wired in the main process yet (P0 integration).",
+    "app": {
+      "info": "Could not read the application information."
+    },
+    "settings": {
+      "load": "Could not load the settings.",
+      "save": "Could not save the settings."
+    },
+    "library": {
+      "query": "The library search failed.",
+      "get": "Could not open this bookmark.",
+      "save": "Adding the links failed.",
+      "applyOps": "The change could not be saved.",
+      "bulkEdit": "The bulk action failed."
+    },
+    "import": {
+      "preview": "Parsing the file failed: nothing was written.",
+      "commit": "The import failed: the transaction was rolled back."
+    },
+    "export": {
+      "run": "The export failed."
+    },
+    "dialog": {
+      "openFile": "Could not open the file picker.",
+      "openDir": "Could not open the folder picker."
+    },
+    "shell": {
+      "openExternal": "Could not open this link in the browser."
+    }
+  }
+}

@@ -1,0 +1,111 @@
+{
+  "paste": {
+    "label": "Add links",
+    "placeholder": "Paste one URL per line, or lines copied from a bookmarks.html file",
+    "submit": "Add",
+    "hint": "Numbered lists, bullets and <A HREF=…> lines are recognised; ADD_DATE timestamps are kept."
+  },
+  "filter": {
+    "search": "Search",
+    "searchPlaceholder": "Title, URL, summary, tag…",
+    "platform": "Platform",
+    "allPlatforms": "All ({{n}})",
+    "platformOption": "{{platform}} ({{n}})",
+    "status": "Status",
+    "allStatuses": "All statuses",
+    "statusOption": "{{status}} ({{n}})",
+    "sort": "Sort",
+    "reset": "Reset",
+    "results": "{{n}} result(s)",
+    "loading": "Searching…"
+  },
+  "sort": {
+    "created_desc": "Added — newest",
+    "created_asc": "Added — oldest",
+    "title": "Title (A→Z)",
+    "confidence_desc": "Confidence, highest first",
+    "updated_desc": "Updated — newest"
+  },
+  "platform": {
+    "youtube": "YouTube",
+    "youtubeVideo": "YouTube video",
+    "youtubeShort": "YouTube Short",
+    "youtubePlaylist": "YouTube playlist",
+    "threads": "Threads",
+    "twitter": "X / Twitter",
+    "github": "GitHub",
+    "article": "Article",
+    "website": "Website",
+    "pdf": "PDF"
+  },
+  "status": {
+    "new": "New",
+    "queued": "Queued",
+    "fetching": "Fetching",
+    "ready": "Ready",
+    "error": "Error",
+    "archived": "Archived"
+  },
+  "confidence": {
+    "high": "high",
+    "moderate": "moderate",
+    "low": "low",
+    "short": "{{score}}% confidence",
+    "title": "Confidence: {{score}}% ({{level}})",
+    "defaultReason": {
+      "high": "Verified from the page metadata and the retrieved content.",
+      "moderate": "Produced from partial content: the summary may be incomplete.",
+      "low": "Little usable content: worth checking or fetching again."
+    }
+  },
+  "table": {
+    "platform": "Platform",
+    "title": "Title",
+    "tags": "Tags",
+    "confidence": "Confidence",
+    "date": "Date",
+    "selectAllVisible": "Select all",
+    "selectRow": "Select “{{title}}”",
+    "untitled": "Untitled",
+    "moreTags": "+{{n}}",
+    "loadingMore": "Loading more…"
+  },
+  "bulk": {
+    "toolbar": "Bulk actions",
+    "selected": "{{n}} selected",
+    "clear": "Clear",
+    "addTag": "Add tag",
+    "removeTag": "Remove tag",
+    "addTagPlaceholder": "Tag to add…",
+    "removeTagPlaceholder": "Tag to remove…",
+    "apply": "Apply",
+    "star": "Star",
+    "delete": "Delete"
+  },
+  "drawer": {
+    "title": "Details",
+    "titleField": "Title",
+    "titlePlaceholder": "Click to add a title…",
+    "url": "Address",
+    "summary": "Summary",
+    "summaryPlaceholder": "Click to add a summary…",
+    "note": "Personal note",
+    "notePlaceholder": "Click to add a note…",
+    "tags": "Tags",
+    "addTag": "Add tag",
+    "addTagPlaceholder": "New tag…",
+    "removeTag": "Remove tag {{label}}",
+    "created": "Added",
+    "updated": "Updated",
+    "status": "Status",
+    "star": "Star",
+    "unstar": "Unstar",
+    "open": "Open",
+    "delete": "Delete"
+  },
+  "empty": {
+    "title": "No links yet",
+    "body": "Paste URLs in the field above, or import an export from your browser.",
+    "action": "Import a file"
+  }
+}

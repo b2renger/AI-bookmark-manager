@@ -18,6 +18,7 @@
   --color-danger: var(--danger);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
+  --color-info: var(--info);
   --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -39,6 +40,7 @@
   --danger: #e5484d;
   --ok: #3fb950;
   --warn: #e3b341;
+  --info: #4c8df6;
 }
 
 [data-theme='light'] {
@@ -57,6 +59,7 @@
   --danger: #c62828;
   --ok: #2e7d32;
   --warn: #b26a00;
+  --info: #1f5fd0;
 }
 
 html,

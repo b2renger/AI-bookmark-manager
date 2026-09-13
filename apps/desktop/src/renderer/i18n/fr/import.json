@@ -1,0 +1,81 @@
+{
+  "import": {
+    "title": "Importer des favoris",
+    "subtitle": "Rien n'est écrit en base avant que vous ayez vu le rapport de doublons.",
+    "steps": "Étapes de l'import",
+    "step": {
+      "pick": "Source",
+      "map": "Colonnes",
+      "preview": "Rapport",
+      "committing": "Écriture",
+      "done": "Terminé"
+    },
+    "source": {
+      "file": "Depuis un fichier",
+      "fileHint": "Export Netscape (.html), Raindrop / Pocket / Karakeep (.csv, .json), profil Chromium ou Firefox.",
+      "choose": "Choisir un fichier…",
+      "paste": "Depuis un collage",
+      "pasteHint": "Collez directement le contenu d'un fichier de favoris ou une liste d'URL.",
+      "pastePlaceholder": "https://exemple.fr/article\n<DT><A HREF=\"https://exemple.fr\" ADD_DATE=\"1700000000\">Exemple</A>",
+      "usePaste": "Utiliser ce texte"
+    },
+    "importer": {
+      "label": "Format : {{importer}}",
+      "detected": "Format détecté : {{importer}}",
+      "auto": "détection automatique",
+      "netscape": "Netscape (bookmarks.html)",
+      "chromium": "Chromium / Chrome / Edge",
+      "firefox": "Firefox (places.sqlite)",
+      "raindrop": "Raindrop.io",
+      "karakeep": "Karakeep",
+      "pocket": "Pocket",
+      "csv": "CSV générique",
+      "json": "JSON générique"
+    },
+    "analyse": "Analyser",
+    "back": "Retour",
+    "commit": "Importer {{n}} lien(s)",
+    "restart": "Recommencer",
+    "enqueueFetch": "Mettre les nouveaux liens en file de récupération",
+    "report": {
+      "total": "Lignes lues",
+      "new": "Nouveaux",
+      "duplicates": "Doublons",
+      "malformed": "Illisibles",
+      "duplicatesSample": "Voir les {{n}} premiers doublons",
+      "malformedSample": "Voir les {{n}} premières lignes illisibles"
+    },
+    "malformed": {
+      "invalidUrl": "URL invalide",
+      "unsupportedScheme": "Schéma non pris en charge",
+      "empty": "Ligne vide",
+      "parseError": "Ligne illisible"
+    },
+    "field": {
+      "url": "Adresse (URL)",
+      "title": "Titre",
+      "tags": "Étiquettes",
+      "folderPath": "Dossier",
+      "createdAt": "Date d'ajout",
+      "note": "Note",
+      "ignore": "Ignorer"
+    },
+    "mapColumn": "Colonne « {{header}} »",
+    "mappedTo": "→ {{field}}",
+    "urlRequired": "Une colonne doit être associée à l'adresse (URL) avant de continuer.",
+    "phase": {
+      "parsing": "Lecture",
+      "deduping": "Dédoublonnage",
+      "inserting": "Écriture",
+      "indexing": "Indexation",
+      "done": "Terminé",
+      "error": "Échec"
+    },
+    "progressCount": "{{done}} / {{total}}",
+    "done": {
+      "title": "Import terminé",
+      "body": "{{n}} lien(s) ajouté(s), {{skipped}} ignoré(s).",
+      "toLibrary": "Voir la bibliothèque"
+    }
+  }
+}

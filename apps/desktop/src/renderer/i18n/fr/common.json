@@ -7,5 +7,48 @@
     "platform": "Plateforme",
     "database": "Base de données",
     "loading": "Chargement"
+  },
+  "common": {
+    "loading": "Chargement",
+    "close": "Fermer",
+    "dismiss": "Masquer",
+    "cancel": "Annuler",
+    "back": "Retour",
+    "retry": "Réessayer",
+    "confirm": "Confirmer"
+  },
+  "nav": {
+    "label": "Navigation principale",
+    "later": "à venir",
+    "library": "Bibliothèque",
+    "import": "Importer",
+    "map": "Carte",
+    "tree": "Arborescence",
+    "review": "Révision",
+    "ask": "Demander",
+    "sharing": "Partage",
+    "egress": "Sorties réseau",
+    "settings": "Réglages"
+  },
+  "theme": {
+    "toggle": "Changer de thème",
+    "dark": "Thème sombre",
+    "light": "Thème clair"
+  },
+  "locale": {
+    "label": "Langue de l'interface",
+    "fr": "Français",
+    "en": "Anglais"
+  },
+  "placeholder": {
+    "body": "Cet écran arrive à la phase P{{phase}}."
+  },
+  "toast": {
+    "saved": "{{n}} lien(s) ajouté(s) · {{duplicates}} doublon(s) · {{rejected}} rejeté(s)",
+    "nothingToSave": "Aucun lien reconnu dans ce texte.",
+    "bulkApplied": "{{n}} fiche(s) modifiée(s).",
+    "imported": "{{n}} lien(s) importé(s).",
+    "exported": "{{n}} fichier(s) écrit(s).",
+    "settingsNotPersisted": "Réglage appliqué mais non enregistré : le processus principal n'a pas répondu."
   }
 }

@@ -1,0 +1,111 @@
+{
+  "paste": {
+    "label": "Ajouter des liens",
+    "placeholder": "Collez une URL par ligne, ou des lignes issues d'un fichier bookmarks.html",
+    "submit": "Ajouter",
+    "hint": "Les listes numérotées, les puces et les lignes <A HREF=…> sont reconnues ; les dates ADD_DATE sont conservées."
+  },
+  "filter": {
+    "search": "Rechercher",
+    "searchPlaceholder": "Titre, URL, résumé, étiquette…",
+    "platform": "Plateforme",
+    "allPlatforms": "Tout ({{n}})",
+    "platformOption": "{{platform}} ({{n}})",
+    "status": "État",
+    "allStatuses": "Tous les états",
+    "statusOption": "{{status}} ({{n}})",
+    "sort": "Tri",
+    "reset": "Réinitialiser",
+    "results": "{{n}} résultat(s)",
+    "loading": "Recherche…"
+  },
+  "sort": {
+    "created_desc": "Ajout — plus récent",
+    "created_asc": "Ajout — plus ancien",
+    "title": "Titre (A→Z)",
+    "confidence_desc": "Confiance décroissante",
+    "updated_desc": "Modification — plus récent"
+  },
+  "platform": {
+    "youtube": "YouTube",
+    "youtubeVideo": "Vidéo YouTube",
+    "youtubeShort": "Short YouTube",
+    "youtubePlaylist": "Playlist YouTube",
+    "threads": "Threads",
+    "twitter": "X / Twitter",
+    "github": "GitHub",
+    "article": "Article",
+    "website": "Site web",
+    "pdf": "PDF"
+  },
+  "status": {
+    "new": "Nouveau",
+    "queued": "En file",
+    "fetching": "Récupération",
+    "ready": "Prêt",
+    "error": "Erreur",
+    "archived": "Archivé"
+  },
+  "confidence": {
+    "high": "élevée",
+    "moderate": "moyenne",
+    "low": "faible",
+    "short": "{{score}} % de confiance",
+    "title": "Confiance : {{score}} % ({{level}})",
+    "defaultReason": {
+      "high": "Vérifié à partir des métadonnées de la page et du contenu récupéré.",
+      "moderate": "Produit à partir d'un contenu partiel : le résumé peut être incomplet.",
+      "low": "Peu de contenu exploitable : à vérifier ou à relancer."
+    }
+  },
+  "table": {
+    "platform": "Plateforme",
+    "title": "Titre",
+    "tags": "Étiquettes",
+    "confidence": "Confiance",
+    "date": "Date",
+    "selectAllVisible": "Tout sélectionner",
+    "selectRow": "Sélectionner « {{title}} »",
+    "untitled": "Sans titre",
+    "moreTags": "+{{n}}",
+    "loadingMore": "Chargement de la suite…"
+  },
+  "bulk": {
+    "toolbar": "Actions groupées",
+    "selected": "{{n}} sélectionné(s)",
+    "clear": "Désélectionner",
+    "addTag": "Ajouter une étiquette",
+    "removeTag": "Retirer une étiquette",
+    "addTagPlaceholder": "Étiquette à ajouter…",
+    "removeTagPlaceholder": "Étiquette à retirer…",
+    "apply": "Appliquer",
+    "star": "Favori",
+    "delete": "Supprimer"
+  },
+  "drawer": {
+    "title": "Détail",
+    "titleField": "Titre",
+    "titlePlaceholder": "Cliquez pour saisir un titre…",
+    "url": "Adresse",
+    "summary": "Résumé",
+    "summaryPlaceholder": "Cliquez pour saisir un résumé…",
+    "note": "Note personnelle",
+    "notePlaceholder": "Cliquez pour saisir une note…",
+    "tags": "Étiquettes",
+    "addTag": "Ajouter une étiquette",
+    "addTagPlaceholder": "Nouvelle étiquette…",
+    "removeTag": "Retirer l'étiquette {{label}}",
+    "created": "Ajouté le",
+    "updated": "Modifié le",
+    "status": "État",
+    "star": "Mettre en favori",
+    "unstar": "Retirer des favoris",
+    "open": "Ouvrir",
+    "delete": "Supprimer"
+  },
+  "empty": {
+    "title": "Aucun lien pour l'instant",
+    "body": "Collez des URL dans le champ ci-dessus, ou importez un export de votre navigateur.",
+    "action": "Importer un fichier"
+  }
+}
