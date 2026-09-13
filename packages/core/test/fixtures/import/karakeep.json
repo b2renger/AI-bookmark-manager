@@ -1,0 +1,53 @@
+{
+  "bookmarks": [
+    {
+      "id": "kb_0001",
+      "createdAt": 1704067200,
+      "title": "Local-first software",
+      "note": "Le manifeste Ink & Switch.",
+      "archived": false,
+      "favourited": true,
+      "tags": [{ "name": "local-first" }, { "name": "crdt" }],
+      "highlights": [{ "text": "You own your data, in spite of the cloud." }],
+      "content": {
+        "type": "link",
+        "url": "https://www.inkandswitch.com/local-first/",
+        "title": "Local-first software: you own your data",
+        "description": "Seven ideals for local-first software.",
+        "author": "Ink & Switch"
+      }
+    },
+    {
+      "id": "kb_0002",
+      "createdAt": 1709251200,
+      "title": null,
+      "note": null,
+      "tags": ["sqlite", "perf"],
+      "content": {
+        "type": "link",
+        "url": "https://www.sqlite.org/wal.html",
+        "title": "Write-Ahead Logging",
+        "description": "How WAL mode works in SQLite."
+      }
+    },
+    {
+      "id": "kb_0003",
+      "createdAt": 1712000000,
+      "title": "Une note libre",
+      "tags": [],
+      "content": { "type": "text", "text": "Pas de lien ici." }
+    },
+    {
+      "id": "kb_0004",
+      "createdAt": 1714000000,
+      "title": "Café et théière",
+      "note": "Accents à préserver.",
+      "tags": [{ "name": "divers" }],
+      "content": {
+        "type": "link",
+        "url": "https://example.com/caf%C3%A9",
+        "description": "Texte d'exemple."
+      }
+    }
+  ]
+}

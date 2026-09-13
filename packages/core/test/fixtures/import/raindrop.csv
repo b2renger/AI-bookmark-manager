@@ -1,0 +1,6 @@
+folder,title,note,excerpt,url,tags,created
+Veille/IA,"Attention Is All You Need","À relire","Le papier qui a introduit les Transformers.",https://arxiv.org/abs/1706.03762,"transformers, nlp",2023-04-12T08:30:00.000Z
+Veille/IA,"Chinchilla, revisité",,"Lois d'échelle, version corrigée",https://arxiv.org/abs/2203.15556,"scaling,llm",2023-05-01T11:00:00.000Z
+Outils,"Excalidraw","Diagrammes rapides","Tableau blanc virtuel, ""main levée""",https://excalidraw.com/,"dessin",2024-01-02T09:15:00.000Z
+,"Sans dossier",,,https://example.net/plain,,2024-02-03T10:00:00.000Z
+Outils,"Ligne cassée","pas d'url",,,"oops",2024-02-04T10:00:00.000Z

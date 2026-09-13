@@ -1,0 +1,6 @@
+title,url,time_added,tags,status
+"The Grug Brained Developer",https://grugbrain.dev/,1672531200,"dev|humour",unread
+"Comment fonctionne un CRDT ?",https://crdt.tech/,1680307200,"crdt|distribué",archive
+"Sans tags",https://example.org/nothing,1690000000,,unread
+"Pas d'URL",,1690000001,"oops",unread
+"Titre, avec ""guillemets""",https://example.org/quoted,1700000000,"csv|edge",archive

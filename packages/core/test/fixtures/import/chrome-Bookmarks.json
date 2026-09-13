@@ -1,0 +1,86 @@
+{
+  "checksum": "0f3a1b2c4d5e6f708192a3b4c5d6e7f8",
+  "roots": {
+    "bookmark_bar": {
+      "children": [
+        {
+          "date_added": "13350000000000000",
+          "guid": "11111111-1111-4111-8111-111111111111",
+          "id": "10",
+          "name": "GitHub",
+          "type": "url",
+          "url": "https://github.com/"
+        },
+        {
+          "children": [
+            {
+              "date_added": "13351000000000000",
+              "guid": "22222222-2222-4222-8222-222222222222",
+              "id": "12",
+              "name": "MDN — Web Docs",
+              "type": "url",
+              "url": "https://developer.mozilla.org/fr/"
+            },
+            {
+              "children": [
+                {
+                  "date_added": "13352000000000000",
+                  "guid": "33333333-3333-4333-8333-333333333333",
+                  "id": "14",
+                  "name": "Rust Book",
+                  "type": "url",
+                  "url": "https://doc.rust-lang.org/book/"
+                }
+              ],
+              "date_added": "13351500000000000",
+              "guid": "44444444-4444-4444-8444-444444444444",
+              "id": "13",
+              "name": "Langages",
+              "type": "folder"
+            }
+          ],
+          "date_added": "13350500000000000",
+          "guid": "55555555-5555-4555-8555-555555555555",
+          "id": "11",
+          "name": "Dév",
+          "type": "folder"
+        }
+      ],
+      "date_added": "13340000000000000",
+      "id": "1",
+      "name": "Barre de favoris",
+      "type": "folder"
+    },
+    "other": {
+      "children": [
+        {
+          "date_added": "13353000000000000",
+          "guid": "66666666-6666-4666-8666-666666666666",
+          "id": "20",
+          "name": "Sans URL",
+          "type": "url"
+        },
+        {
+          "date_added": "13354000000000000",
+          "guid": "77777777-7777-4777-8777-777777777777",
+          "id": "21",
+          "name": "Hacker News",
+          "type": "url",
+          "url": "https://news.ycombinator.com/"
+        }
+      ],
+      "date_added": "13340000000000000",
+      "id": "2",
+      "name": "Autres favoris",
+      "type": "folder"
+    },
+    "synced": {
+      "children": [],
+      "date_added": "13340000000000000",
+      "id": "3",
+      "name": "Favoris mobiles",
+      "type": "folder"
+    }
+  },
+  "version": 1
+}
