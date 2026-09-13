@@ -3,3 +3,6 @@
 // through a port (./ports).
 export * from './ports/index.js';
 export * from './ids/index.js';
+export * from './db/index.js';
+export * from './ops/index.js';
+export * from './search/index.js';

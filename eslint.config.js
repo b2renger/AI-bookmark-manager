@@ -24,7 +24,9 @@ export default tseslint.config(
       'no-restricted-imports': ['error', {
         patterns: [
           {
-            group: ['node:*', ...NODE_BUILTINS],
+            // regex, not glob: glob patterns use gitignore semantics, so a bare `url` would also
+            // match the relative import `../url/normalize.js`.
+            regex: `^(node:.*|(${NODE_BUILTINS.map((b) => b.replace('/', '\\/')).join('|')})(\\/.*)?)$`,
             message: 'packages/core must run in a browser/worker. Take a port (DbHandle, FetchLike, FileStore, Clock, Random, SecretStore) as an argument instead — see packages/core/src/ports/.',
           },
           {

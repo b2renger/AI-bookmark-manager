@@ -24,9 +24,12 @@ export interface OpInput {
    *  { parentId, fracIndex }; for link/unlink: the join-row payload. */
   value?: unknown;
   runId?: string;
+  /** Bundle/peer merge only: preserve the incoming HLC verbatim instead of minting a new one.
+   *  applyOp then calls ctx.hlc.receive(hlc) so the local clock still advances past it. */
+  hlc?: string;
 }
 
-/** Hybrid logical clock generator: 29-char sortable strings `<ms b36×10>.<ctr b36×4>.<actor b58×8>`. */
+/** Hybrid logical clock generator: 24-char sortable strings `<ms b36×10>.<ctr b36×4>.<actor b58×8>`. */
 export interface HlcGenerator {
   /** Mint the next HLC, strictly greater than any previously minted or received. */
   next(): string;
