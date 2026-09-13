@@ -1,0 +1,10 @@
+{
+  "import100k_ms": 60000,
+  "search_p95_ms": 150,
+  "knn_build_ms": 120000,
+  "louvain_ms": 30000,
+  "map_first_paint_ms": 2000,
+  "ask_plan_ms": 400,
+  "bundle_export_10k_ms": 20000,
+  "migrate_ms": 5000
+}
