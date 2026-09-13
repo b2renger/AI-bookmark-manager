@@ -42,3 +42,6 @@ npm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Generated declaration output
+dist-types/
