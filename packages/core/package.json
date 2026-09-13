@@ -1,0 +1,25 @@
+{
+  "name": "@cairn/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Runtime-agnostic core of Cairn: schema, ops, importers, exporters, search, clustering. Zero node: imports.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run --project core"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.4.0",
+    "linkedom": "^0.18.13",
+    "zod": "^4.6.4"
+  },
+  "devDependencies": {
+    "better-sqlite3": "^13.0.3",
+    "@types/better-sqlite3": "^7.6.13",
+    "sqlite-vec": "^0.1.9"
+  }
+}

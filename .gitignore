@@ -1,18 +1,38 @@
+# Secrets — runtime keys live in Electron safeStorage; .env is dev-only and never committed
+.env
+.env.*
+!.env.example
+
+# Dependencies / build output
+node_modules
+dist
+out
+release
+*.tsbuildinfo
+.tmp-*
+
+# Databases and generated fixtures (the tiny fixture under fixtures/ IS committed)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+.fixtures/
+snapshots/
+models/
+.cache/
+
+# Test artefacts
+eval/reports/
+playwright-report/
+test-results/
+coverage/
+
 # Logs
 logs
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
+# Editor / OS
 .vscode/*
 !.vscode/extensions.json
 .idea

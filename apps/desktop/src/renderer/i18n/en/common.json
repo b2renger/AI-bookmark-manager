@@ -1,0 +1,11 @@
+{
+  "app": {
+    "name": "Cairn",
+    "tagline": "Your links, on your machine. Local analysis, encrypted sharing, no account.",
+    "status": "Status",
+    "version": "Version",
+    "platform": "Platform",
+    "database": "Database",
+    "loading": "Loading"
+  }
+}

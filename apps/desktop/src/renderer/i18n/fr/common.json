@@ -1,0 +1,11 @@
+{
+  "app": {
+    "name": "Cairn",
+    "tagline": "Vos liens, chez vous. Analyse locale, partage chiffré, aucun compte.",
+    "status": "État",
+    "version": "Version",
+    "platform": "Plateforme",
+    "database": "Base de données",
+    "loading": "Chargement"
+  }
+}

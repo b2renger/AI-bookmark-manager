@@ -1,0 +1,48 @@
+# plans/TECHNICAL-DESIGN.md §7.1. Signing/notarization fields are wired in P7; until then this
+# produces UNSIGNED installers for the rig tests.
+appId: com.berenger.cairn
+productName: Cairn
+copyright: © 2026 Bérenger Recoules
+directories:
+  output: ../../release
+  buildResources: build
+files:
+  - "out/**/*"
+  - "!out/**/*.map"
+  - "package.json"
+asar: true
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
+  - "**/node_modules/sqlite-vec*/**"
+  - "**/*.node"
+electronFuses:
+  runAsNode: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  resetAdHocDarwinSignature: true
+publish:
+  provider: github
+  owner: b2renger
+  repo: AI-bookmark-manager
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+win:
+  target:
+    - { target: nsis, arch: [x64] }
+    - { target: zip, arch: [x64] }
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+mac:
+  target:
+    - { target: dmg, arch: [arm64] }
+    - { target: zip, arch: [arm64] }
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  identity: "-"
+  hardenedRuntime: false
+linux:
+  target: [AppImage, deb]
+  category: Utility
+  icon: build/icon.png
