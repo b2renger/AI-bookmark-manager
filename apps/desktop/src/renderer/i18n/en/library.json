@@ -40,11 +40,10 @@
   },
   "status": {
     "new": "New",
-    "queued": "Queued",
     "fetching": "Fetching",
     "ready": "Ready",
-    "error": "Error",
-    "archived": "Archived"
+    "partial": "Partial",
+    "failed": "Failed"
   },
   "confidence": {
     "high": "high",

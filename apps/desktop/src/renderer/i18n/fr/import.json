@@ -24,13 +24,13 @@
       "detected": "Format détecté : {{importer}}",
       "auto": "détection automatique",
       "netscape": "Netscape (bookmarks.html)",
-      "chromium": "Chromium / Chrome / Edge",
+      "chrome": "Chromium / Chrome / Edge",
       "firefox": "Firefox (places.sqlite)",
       "raindrop": "Raindrop.io",
       "karakeep": "Karakeep",
       "pocket": "Pocket",
       "csv": "CSV générique",
-      "json": "JSON générique"
+      "notion": "Notion"
     },
     "analyse": "Analyser",
     "back": "Retour",

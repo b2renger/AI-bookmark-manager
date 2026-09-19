@@ -40,11 +40,10 @@
   },
   "status": {
     "new": "Nouveau",
-    "queued": "En file",
     "fetching": "Récupération",
     "ready": "Prêt",
-    "error": "Erreur",
-    "archived": "Archivé"
+    "partial": "Partiel",
+    "failed": "Échec"
   },
   "confidence": {
     "high": "élevée",

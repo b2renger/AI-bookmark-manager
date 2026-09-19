@@ -46,18 +46,28 @@ export interface Settings {
 
 // ── Library vocabulary ────────────────────────────────────────────────────────────────────
 
+// Every vocabulary below mirrors a CHECK constraint in
+// packages/core/src/db/migrations/0001_init.ts, and is declared as a runtime tuple so
+// packages/core/test/library/dto.test.ts can assert the two lists are the same. The DDL is the
+// truth; this file is its projection into the renderer.
+
 /** String unions rather than enums so JSON straight out of SQLite is assignable as-is. */
-export type Platform =
-  | 'youtube' | 'threads' | 'twitter' | 'github' | 'article' | 'website' | 'pdf';
+export const PLATFORMS = [
+  'youtube', 'threads', 'twitter', 'github', 'article', 'website', 'pdf',
+] as const;
+export type Platform = (typeof PLATFORMS)[number];
 
-export type BookmarkStatus = 'new' | 'queued' | 'fetching' | 'ready' | 'error' | 'archived';
+export const BOOKMARK_STATUSES = ['new', 'fetching', 'ready', 'partial', 'failed'] as const;
+export type BookmarkStatus = (typeof BOOKMARK_STATUSES)[number];
 
-export type SummaryKind = 'none' | 'extractive' | 'generated' | 'manual';
+export const SUMMARY_KINDS = ['none', 'extractive', 'llm', 'imported'] as const;
+export type SummaryKind = (typeof SUMMARY_KINDS)[number];
 
-export type AcquisitionMethod =
-  | 'none' | 'metadata' | 'oembed' | 'readability' | 'headless' | 'manual';
+export const TAG_SOURCES = ['user', 'import', 'ai'] as const;
+export type TagSource = (typeof TAG_SOURCES)[number];
 
-export type TagSource = 'user' | 'import' | 'auto';
+/** Free-form per the DDL (`acquisition_method TEXT`), e.g. `http:defuddle`. Null until P3. */
+export type AcquisitionMethod = string | null;
 
 export interface TagRefDto {
   id: string;
@@ -105,8 +115,10 @@ export interface BookmarkDetailDto extends BookmarkRowDto {
   chunkCount: number;
 }
 
-export type LibrarySort =
-  | 'created_desc' | 'created_asc' | 'title' | 'confidence_desc' | 'updated_desc';
+export const LIBRARY_SORTS = [
+  'created_desc', 'created_asc', 'title', 'confidence_desc', 'updated_desc',
+] as const;
+export type LibrarySort = (typeof LIBRARY_SORTS)[number];
 
 export interface LibraryQuery {
   collectionId?: string;
@@ -209,8 +221,10 @@ export interface BulkEditResponse {
 
 // ── import (rows 24–25) ───────────────────────────────────────────────────────────────────
 
-export type ImporterId =
-  | 'netscape' | 'chromium' | 'firefox' | 'raindrop' | 'karakeep' | 'pocket' | 'csv' | 'json';
+export const IMPORTER_IDS = [
+  'netscape', 'chrome', 'firefox', 'raindrop', 'karakeep', 'pocket', 'csv', 'notion',
+] as const;
+export type ImporterId = (typeof IMPORTER_IDS)[number];
 
 /** Canonical destination fields the CSV/JSON column mapper targets. */
 export type CanonicalField =
@@ -219,6 +233,8 @@ export type CanonicalField =
 /** header name → canonical field. */
 export type ColumnMapping = Record<string, CanonicalField>;
 
+/** `path` means "the host reads the file itself" — a places.sqlite or a 200 MB export never
+ *  crosses the IPC boundary as bytes. */
 export interface ImportSource {
   kind: 'text' | 'bytes' | 'path';
   text?: string;
