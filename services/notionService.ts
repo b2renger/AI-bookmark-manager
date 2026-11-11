@@ -71,7 +71,7 @@ async function notionFetch(endpoint: string, method: string, token: string, prox
       // Handle network errors (CORS, Proxy down, etc.)
       console.error(`[NotionFetch] Network error during fetch to ${targetUrl}:`, error);
       throw new NotionError(
-        "Network Error: Failed to connect to Notion. If you are using CORSProxy.io, it is likely blocking requests from the AI Studio preview domain. Please switch to 'Built-in Server Proxy' in Settings, or run the app locally."
+        "Network Error: Failed to connect to Notion. Notion's API does not accept direct browser calls, so a proxy is required: set one under Settings > Proxy Configuration (your own Cloudflare Worker, or the local dev server when running npm run dev:proxy)."
       );
     }
   }

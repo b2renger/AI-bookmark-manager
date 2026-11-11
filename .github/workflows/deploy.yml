@@ -1,0 +1,64 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Builds pull requests without publishing them.
+  pull_request:
+  # Lets you redeploy by hand from the Actions tab.
+  workflow_dispatch:
+
+# Required by actions/deploy-pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; queue instead, and don't kill one mid-publish.
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # `npm install`, not `npm ci`: package-lock.json has not been regenerated
+      # since the dependency change. Switch back to `npm ci` once it has.
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      # Reported but not blocking yet, so a type error cannot stop a deploy
+      # while the static version is being stabilised.
+      - name: Type check
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build
+        run: npm run build
+
+      # Stops Pages running the output through Jekyll.
+      - name: Disable Jekyll
+        run: touch dist/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    # Only the main branch is published.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

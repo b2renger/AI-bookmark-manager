@@ -1,16 +1,29 @@
-export async function proxyFetch(targetUrl: string, init?: RequestInit, proxyUrl?: string): Promise<Response> {
-  const method = init?.method || 'GET';
-  const headers = (init?.headers as Record<string, string>) || {};
-  const body = init?.body;
-  const chosenProxy = proxyUrl?.trim() || '/api/proxy';
+/** The local development server's proxy route (see server.ts). */
+export const LOCAL_PROXY = '/api/proxy';
 
-  // If using our built-in proxy
-  if (chosenProxy === '/api/proxy') {
-    return fetch('/api/proxy', {
+/**
+ * Fetches a URL, optionally through a CORS proxy.
+ *
+ * The published site is static, so there is no proxy by default: an empty
+ * `proxyUrl` means a direct browser request, which only succeeds for
+ * endpoints that allow cross-origin calls.
+ */
+export async function proxyFetch(targetUrl: string, init?: RequestInit, proxyUrl?: string): Promise<Response> {
+  const chosenProxy = (proxyUrl ?? '').trim();
+
+  if (!chosenProxy || chosenProxy === 'none') {
+    return fetch(targetUrl, init);
+  }
+
+  // The dev server's proxy takes the request description as JSON.
+  if (chosenProxy === LOCAL_PROXY) {
+    const method = init?.method || 'GET';
+    const headers = (init?.headers as Record<string, string>) || {};
+    const body = init?.body;
+    return fetch(LOCAL_PROXY, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
+      signal: init?.signal,
       body: JSON.stringify({
         url: targetUrl,
         method,
@@ -20,15 +33,9 @@ export async function proxyFetch(targetUrl: string, init?: RequestInit, proxyUrl
     });
   }
 
-  // If using a classic external CORS proxy that appends URLs
-  let requestUrl = targetUrl;
-  if (chosenProxy && chosenProxy !== 'none') {
-    if (chosenProxy.includes('corsproxy.io') || chosenProxy.includes('cors-anywhere')) {
-      requestUrl = `${chosenProxy}${encodeURIComponent(targetUrl)}`;
-    } else {
-      requestUrl = `${chosenProxy}${targetUrl}`;
-    }
-  }
-
+  // A prefix-style proxy (for example your own Cloudflare Worker).
+  const requestUrl = chosenProxy.includes('corsproxy.io') || chosenProxy.includes('cors-anywhere')
+    ? `${chosenProxy}${encodeURIComponent(targetUrl)}`
+    : `${chosenProxy}${targetUrl}`;
   return fetch(requestUrl, init);
 }

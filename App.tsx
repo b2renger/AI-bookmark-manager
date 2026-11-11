@@ -6,17 +6,44 @@ import { Header } from './components/Header';
 import { SettingsModal } from './components/SettingsModal';
 import { NotionSyncModal } from './components/NotionSyncModal';
 import { BulkActionBar } from './components/BulkActionBar';
-import { generateBookmarksBatch, ApiKeyError } from './services/geminiService';
+import { analyzeUrl, delayBetweenUrls, BookmarkResult } from './services/analyze';
+import { loadAiKeys, loadAiSettings, providerProblem, saveAiKeys, saveAiSettings } from './services/ai/settings';
+import { AiConfigError, AiKeys, AiSettings } from './services/ai/types';
+import { LOCAL_PROXY } from './lib/proxyFetch';
 import { Bookmark } from './types';
-import { v4 as uuidv4 } from 'uuid';
 
 const AI_BOOKMARKS_STORAGE_KEY = 'ai-bookmark-manager-bookmarks';
 const THEME_STORAGE_KEY = 'ai-bookmark-manager-theme';
 const X_API_KEY_STORAGE_KEY = 'ai-bookmark-manager-x-api-key';
 const NOTION_CONFIG_STORAGE_KEY = 'ai-bookmark-manager-notion-config';
-const GEMINI_MODEL_STORAGE_KEY = 'ai-bookmark-manager-gemini-model';
-const BATCH_SIZE = 3; // Process 3 URLs per call to stay strictly within rate limits
-const BATCH_DELAY_MS = 4000; // 4 seconds delay between batches to respect 15 RPM constraints
+
+const newId = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+/** The dev server's proxy only exists when the app is served by `npm run dev`. */
+const isLocalHost = (): boolean => /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
+
+/** A bookmark the model could not really summarise is flagged, never passed off as done. */
+const needsAttention = (res: BookmarkResult): boolean => !res.summary || res.summary.length < 10;
+
+const applyResult = (b: Bookmark, res: BookmarkResult): Bookmark => ({
+  ...b,
+  title: res.title,
+  summary: res.summary,
+  keywords: res.keywords,
+  sources: res.sources,
+  confidenceScore: res.confidenceScore,
+  confidenceReason: res.confidenceReason,
+  platform: res.platform,
+  author: res.author,
+  thumbnailUrl: res.thumbnailUrl,
+  // Prefer a publication date stated by the page; otherwise keep the imported date.
+  createdAt: res.publicationDate || b.createdAt,
+  status: needsAttention(res) ? 'warning' : 'done',
+  errorMessage: undefined,
+});
 
 const playSuccessChime = () => {
   try {
@@ -86,16 +113,10 @@ const App: React.FC = () => {
   const [xApiKey, setXApiKey] = useState<string>('');
   const [notionConfig, setNotionConfig] = useState<{ apiKey: string; proxyUrl: string }>({ 
     apiKey: '', 
-    proxyUrl: '/api/proxy' 
+    proxyUrl: '' 
   });
-  const [geminiModel, setGeminiModel] = useState<string>(() => {
-    const stored = localStorage.getItem(GEMINI_MODEL_STORAGE_KEY);
-    const validModels = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
-    if (stored && validModels.includes(stored)) {
-      return stored;
-    }
-    return 'gemini-3.7-flash';
-  });
+  const [aiSettings, setAiSettings] = useState<AiSettings>(() => loadAiSettings());
+  const [aiKeys, setAiKeys] = useState<AiKeys>(() => loadAiKeys());
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {
@@ -130,8 +151,10 @@ const App: React.FC = () => {
     if (storedNotionConfig) {
         try {
             const parsedConfig = JSON.parse(storedNotionConfig);
-            if (parsedConfig && parsedConfig.proxyUrl === 'https://corsproxy.io/?') {
-                parsedConfig.proxyUrl = '/api/proxy';
+            // The built-in proxy belonged to the old server. It only exists
+            // now when running the dev server locally.
+            if (parsedConfig && parsedConfig.proxyUrl === LOCAL_PROXY && !isLocalHost()) {
+                parsedConfig.proxyUrl = '';
             }
             setNotionConfig(parsedConfig);
         } catch (e) {
@@ -204,13 +227,25 @@ const App: React.FC = () => {
     localStorage.setItem(NOTION_CONFIG_STORAGE_KEY, JSON.stringify(config));
   }, []);
 
-  const handleSaveGeminiModel = useCallback((model: string) => {
-    setGeminiModel(model);
-    localStorage.setItem(GEMINI_MODEL_STORAGE_KEY, model);
+  const handleSaveAi = useCallback((settings: AiSettings, keys: AiKeys) => {
+    setAiSettings(settings);
+    setAiKeys(keys);
+    saveAiSettings(settings);
+    saveAiKeys(keys);
+    setError(null);
   }, []);
+
+  const aiProblem = providerProblem(aiSettings, aiKeys);
 
   const handleProcessUrls = useCallback(async (urlData: { url: string; addDate?: string }[]) => {
     if (!urlData.length) return;
+
+    const problem = providerProblem(aiSettings, aiKeys);
+    if (problem) {
+      setError(problem);
+      setIsSettingsOpen(true);
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -233,7 +268,7 @@ const App: React.FC = () => {
     }
 
     const newEntries: Bookmark[] = uniqueBatch.map(data => ({
-      id: uuidv4(),
+      id: newId(),
       url: data.url,
       title: 'Queued...',
       summary: '',
@@ -244,81 +279,49 @@ const App: React.FC = () => {
 
     setBookmarks(prev => [...prev, ...newEntries]);
 
-    // Process in Chunks
-    for (let i = 0; i < newEntries.length; i += BATCH_SIZE) {
-        const chunk = newEntries.slice(i, i + BATCH_SIZE);
-        const chunkUrls = chunk.map(b => b.url);
+    const config = { settings: aiSettings, keys: aiKeys, xApiKey, proxyUrl: notionConfig.proxyUrl };
+    const pause = delayBetweenUrls(aiSettings);
+    const untitle = (b: Bookmark) => (b.title === 'Reading page...' || b.title === 'Queued...' ? 'Untitled' : b.title);
 
-        // Update titles to reflect active processing
-        setBookmarks(prev => prev.map(b => 
-            chunk.some(c => c.id === b.id) ? { ...b, title: 'Processing batch...' } : b
-        ));
+    // One URL per request, so nothing leaks between bookmarks.
+    for (let i = 0; i < newEntries.length; i++) {
+        const entry = newEntries[i];
+
+        setBookmarks(prev => prev.map(b => (b.id === entry.id ? { ...b, title: 'Reading page...' } : b)));
 
         try {
-            // Pass proxyUrl to allow fetching youtube details
-            const results = await generateBookmarksBatch(chunkUrls, xApiKey, notionConfig.proxyUrl, geminiModel);
-            
-            setBookmarks(prev => {
-                const next = [...prev];
-                results.forEach(res => {
-                    const idx = next.findIndex(b => b.url === res.url && b.status === 'processing');
-                    if (idx !== -1) {
-                        const isWarning = !res.summary || res.summary.length < 10 || res.summary.includes('quota') || res.summary.includes('rate limit');
-                        next[idx] = {
-                            ...next[idx],
-                            title: res.title,
-                            summary: res.summary,
-                            keywords: res.keywords,
-                            sources: res.sources,
-                            confidenceScore: res.confidenceScore,
-                            confidenceReason: res.confidenceReason,
-                            platform: res.platform,
-                            author: res.author,
-                            thumbnailUrl: res.thumbnailUrl,
-                            // If the AI found a specific publication date, prefer it. Otherwise keep imported date.
-                            createdAt: res.publicationDate || next[idx].createdAt,
-                            status: isWarning ? 'warning' : 'done',
-                        };
-                    }
-                });
-                return next;
-            });
+            const res = await analyzeUrl(entry.url, config);
+            setBookmarks(prev => prev.map(b => (b.id === entry.id && b.status === 'processing' ? applyResult(b, res) : b)));
         } catch (e: any) {
             const msg = e instanceof Error ? e.message : String(e);
-            
-            // Check for platform-specific key selection error
-            if (e instanceof ApiKeyError) {
-                setError("Gemini API Key missing or invalid. Please check your configuration in Settings.");
-                setIsLoading(false);
-                // Mark current batch as error
-                setBookmarks(prev => prev.map(b => 
-                    chunk.some(c => c.id === b.id) ? { ...b, title: b.title === 'Processing batch...' || b.title === 'Queued...' ? 'Untitled' : b.title, status: 'error', errorMessage: 'Missing/Invalid API Key. Update in Settings.' } : b
+
+            // A configuration problem will fail every remaining URL the same way: stop here.
+            if (e instanceof AiConfigError) {
+                setError(msg);
+                const remaining = new Set(newEntries.slice(i).map(b => b.id));
+                setBookmarks(prev => prev.map(b =>
+                    remaining.has(b.id) && b.status === 'processing'
+                        ? { ...b, title: untitle(b), status: 'error', errorMessage: msg }
+                        : b
                 ));
-                return;
-            } else if (msg.includes("Model not found") || msg.includes("Requested entity was not found.")) {
-                setError("Model not found or not supported. Please select a different Gemini model in Settings.");
                 setIsLoading(false);
-                // Mark current batch as error
-                setBookmarks(prev => prev.map(b => 
-                    chunk.some(c => c.id === b.id) ? { ...b, title: b.title === 'Processing batch...' || b.title === 'Queued...' ? 'Untitled' : b.title, status: 'error', errorMessage: 'Model not supported. Update in Settings.' } : b
-                ));
                 return;
             }
-            
-            setBookmarks(prev => prev.map(b => 
-                chunk.some(c => c.id === b.id) ? { ...b, title: b.title === 'Processing batch...' || b.title === 'Queued...' ? 'Untitled' : b.title, status: 'error', errorMessage: msg } : b
+
+            setBookmarks(prev => prev.map(b =>
+                b.id === entry.id ? { ...b, title: untitle(b), status: 'error', errorMessage: msg } : b
             ));
         }
 
-        // Respect RPM quotas
-        if (i + BATCH_SIZE < newEntries.length) {
-            await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
+        // Respect per-minute quotas
+        if (pause > 0 && i + 1 < newEntries.length) {
+            await new Promise(r => setTimeout(r, pause));
         }
     }
     
     setIsLoading(false);
     playSuccessChime();
-  }, [bookmarks, xApiKey, notionConfig.proxyUrl, geminiModel]);
+  }, [bookmarks, xApiKey, notionConfig.proxyUrl, aiSettings, aiKeys]);
 
   const handleUpdateBookmark = useCallback((updated: Bookmark) => {
     setBookmarks(prev => prev.map(b => (b.id === updated.id ? updated : b)));
@@ -342,49 +345,26 @@ const App: React.FC = () => {
     const target = bookmarks.find(b => b.id === id);
     if (!target) return;
 
+    const problem = providerProblem(aiSettings, aiKeys);
+    if (problem) {
+      setError(problem);
+      setIsSettingsOpen(true);
+      return;
+    }
+
+    const previousTitle = target.title;
     setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'processing', title: 'Updating...' } : b));
-    
-    // Timeout constant for retry operations
-    const RETRY_TIMEOUT_MS = 30000;
 
     try {
-        const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error("Request timed out. Please try again.")), RETRY_TIMEOUT_MS)
-        );
-
-        // Race condition: either result returns or timeout throws
-        // @ts-ignore - TypeScript issue with Promise.race array types
-        const result = await Promise.race([
-             generateBookmarksBatch([target.url], xApiKey, notionConfig.proxyUrl, geminiModel),
-             timeoutPromise
-        ]);
-
-        const res = result[0];
-        const isWarning = !res.summary || res.summary.length < 10 || res.summary.includes('quota') || res.summary.includes('rate limit');
-        setBookmarks(prev => prev.map(b => b.id === id ? {
-            ...b,
-            title: res.title,
-            summary: res.summary,
-            keywords: res.keywords,
-            sources: res.sources,
-            confidenceScore: res.confidenceScore,
-            confidenceReason: res.confidenceReason,
-            platform: res.platform,
-            author: res.author,
-            thumbnailUrl: res.thumbnailUrl,
-            createdAt: res.publicationDate || b.createdAt,
-            status: isWarning ? 'warning' : 'done'
-        } : b));
+        const res = await analyzeUrl(target.url, { settings: aiSettings, keys: aiKeys, xApiKey, proxyUrl: notionConfig.proxyUrl });
+        setError(null);
+        setBookmarks(prev => prev.map(b => (b.id === id ? applyResult(b, res) : b)));
     } catch (e: any) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (msg.includes("Model not found") || msg.includes("Requested entity was not found.")) {
-             setError("Model not found or not supported. Please select a different Gemini model in Settings.");
-        } else if (e instanceof ApiKeyError) {
-             setError("Gemini API Key missing or invalid. Please check your configuration in Settings.");
-        }
-        setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'error', errorMessage: msg || "Retry failed", title: b.title === 'Updating...' ? 'Untitled' : b.title } : b));
+        if (e instanceof AiConfigError) setError(msg);
+        setBookmarks(prev => prev.map(b => b.id === id ? { ...b, status: 'error', errorMessage: msg || "Retry failed", title: previousTitle || 'Untitled' } : b));
     }
-  }, [bookmarks, xApiKey, notionConfig.proxyUrl, geminiModel]);
+  }, [bookmarks, xApiKey, notionConfig.proxyUrl, aiSettings, aiKeys]);
 
   // Selection Handlers
   const handleToggleSelect = useCallback((id: string) => {
@@ -440,7 +420,7 @@ const App: React.FC = () => {
       />
       <main className="container mx-auto p-4 md:p-8">
         <div className="max-w-4xl mx-auto">
-          <UrlInput onProcess={handleProcessUrls} isLoading={isLoading} onOpenSettings={() => setIsSettingsOpen(true)} />
+          <UrlInput onProcess={handleProcessUrls} isLoading={isLoading} onOpenSettings={() => setIsSettingsOpen(true)} setupHint={aiProblem} />
           {error && <div className="mt-4 text-center text-red-500 bg-red-100 dark:bg-red-900/50 p-3 rounded-lg shadow-sm border border-red-200 dark:border-red-800">{error}</div>}
           <BookmarkList 
             bookmarks={bookmarks} 
@@ -470,8 +450,9 @@ const App: React.FC = () => {
         onSaveXApiKey={handleSaveXApiKey}
         notionConfig={notionConfig}
         onSaveNotionConfig={handleSaveNotionConfig}
-        geminiModel={geminiModel}
-        onSaveGeminiModel={handleSaveGeminiModel}
+        aiSettings={aiSettings}
+        aiKeys={aiKeys}
+        onSaveAi={handleSaveAi}
       />
 
       <NotionSyncModal 

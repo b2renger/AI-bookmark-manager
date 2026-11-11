@@ -5,9 +5,11 @@ interface UrlInputProps {
   onProcess: (urls: { url: string; addDate?: string }[]) => void;
   isLoading: boolean;
   onOpenSettings: () => void;
+  /** Why the AI provider is not ready yet, or null when it is. */
+  setupHint?: string | null;
 }
 
-export const UrlInput: React.FC<UrlInputProps> = ({ onProcess, isLoading, onOpenSettings }) => {
+export const UrlInput: React.FC<UrlInputProps> = ({ onProcess, isLoading, onOpenSettings, setupHint }) => {
   const [text, setText] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -61,8 +63,21 @@ export const UrlInput: React.FC<UrlInputProps> = ({ onProcess, isLoading, onOpen
           Import Bookmarks
         </label>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-          Paste links from <strong>YouTube</strong> (videos, shorts, playlists), <strong>Threads</strong>, <strong>X/Twitter</strong>, or any web article. The AI extracts metadata, generates summaries, and calculates confidence scores.
+          Paste links from <strong>YouTube</strong> (videos, shorts, playlists), <strong>Threads</strong>, <strong>X/Twitter</strong>, or any web article. Each link is read, summarised and tagged, with a confidence level based on what could actually be read.
         </p>
+
+        {setupHint && (
+          <div className="mb-4 rounded-xl p-4 border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/40 flex items-center justify-between gap-3">
+            <p className="text-sm text-amber-800 dark:text-amber-200">{setupHint}</p>
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="flex-shrink-0 px-3 py-1.5 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors"
+            >
+              Open Settings
+            </button>
+          </div>
+        )}
 
         <div className="mb-4 bg-blue-50/60 dark:bg-slate-750 rounded-xl p-4 border border-blue-100 dark:border-slate-700 flex items-start gap-3">
              <div className="text-blue-500 dark:text-blue-400 mt-0.5">
@@ -71,9 +86,9 @@ export const UrlInput: React.FC<UrlInputProps> = ({ onProcess, isLoading, onOpen
                 </svg>
              </div>
              <div className="text-xs text-slate-600 dark:text-slate-300">
-                <p className="font-semibold text-slate-800 dark:text-slate-200 mb-1">Deep Platform Extraction & Confidence Scoring</p>
+                <p className="font-semibold text-slate-800 dark:text-slate-200 mb-1">Everything runs in your browser</p>
                 <p>
-                    YouTube titles, channels, and descriptions as well as Threads post contents are automatically scraped and grounded. Each AI summary includes a <strong>Confidence Score (0-100%)</strong> with explanation.
+                    Your API keys and bookmarks stay on this device. The <strong>confidence score</strong> reflects what was really read: the full page, only its title and description, or nothing.
                 </p>
              </div>
         </div>

@@ -3,6 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { CloseIcon } from './common/Icons';
 import { getAccessibleDatabases } from '../services/notionService';
 import { proxyFetch } from '../lib/proxyFetch';
+import { AiSettingsSection } from './AiSettingsSection';
+import { cleanKey } from '../services/ai/settings';
+import { AiKeys, AiSettings } from '../services/ai/types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -11,16 +14,16 @@ interface SettingsModalProps {
   onSaveXApiKey: (key: string) => void;
   notionConfig: { apiKey: string; proxyUrl: string };
   onSaveNotionConfig: (config: { apiKey: string; proxyUrl: string }) => void;
-  geminiModel: string;
-  onSaveGeminiModel: (model: string) => void;
+  aiSettings: AiSettings;
+  aiKeys: AiKeys;
+  onSaveAi: (settings: AiSettings, keys: AiKeys) => void;
 }
 
 const PROXY_PRESETS = [
-    { label: "Built-in Server Proxy (Highly Recommended)", value: "/api/proxy" },
-    { label: "CORSProxy.io (Blocks Preview in AI Studio)", value: "https://corsproxy.io/?" },
-    { label: "CodeTabs (Fails on Preflights)", value: "https://api.codetabs.com/v1/proxy?quest=" },
-    { label: "Worker Proxy (Cloudflare - Set your own URL)", value: "https://your-worker-name.workers.dev/?" },
-    { label: "CORS-Anywhere (Often blocked by X API)", value: "https://cors-anywhere.herokuapp.com/" },
+    { label: "None (default)", value: "" },
+    { label: "Local dev server (only with npm run dev:proxy)", value: "/api/proxy" },
+    { label: "Your own Cloudflare Worker (set the URL below)", value: "https://your-worker-name.workers.dev/?" },
+    { label: "CORSProxy.io (public, often blocked)", value: "https://corsproxy.io/?" },
 ];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -30,13 +33,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSaveXApiKey,
   notionConfig,
   onSaveNotionConfig,
-  geminiModel,
-  onSaveGeminiModel
+  aiSettings,
+  aiKeys,
+  onSaveAi
 }) => {
   const [xKeyValue, setXKeyValue] = useState(xApiKey);
   const [notionKey, setNotionKey] = useState(notionConfig.apiKey);
   const [proxyUrl, setProxyUrl] = useState(notionConfig.proxyUrl);
-  const [localGeminiModel, setLocalGeminiModel] = useState(geminiModel);
+  const [localAi, setLocalAi] = useState<AiSettings>(aiSettings);
+  const [localKeys, setLocalKeys] = useState<AiKeys>(aiKeys);
   const [testStatus, setTestStatus] = useState<{ loading: boolean; error: string | null; success: string | null }>({
     loading: false,
     error: null,
@@ -53,11 +58,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setXKeyValue(xApiKey);
       setNotionKey(notionConfig.apiKey);
       setProxyUrl(notionConfig.proxyUrl);
-      setLocalGeminiModel(geminiModel);
+      setLocalAi(aiSettings);
+      setLocalKeys(aiKeys);
       setTestStatus({ loading: false, error: null, success: null });
       setTestXStatus({ loading: false, error: null, success: null });
     }
-  }, [isOpen, xApiKey, notionConfig, geminiModel]);
+  }, [isOpen, xApiKey, notionConfig, aiSettings, aiKeys]);
 
   if (!isOpen) return null;
 
@@ -66,13 +72,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const sanitizedNotionKey = notionKey.trim().replace(/^["']|["']$/g, '').trim();
     onSaveXApiKey(sanitizedXKey);
     onSaveNotionConfig({ apiKey: sanitizedNotionKey, proxyUrl: proxyUrl.trim() });
-    onSaveGeminiModel(localGeminiModel);
+    const cleanedOpenai: Record<string, string> = {};
+    Object.entries(localKeys.openai).forEach(([id, key]) => {
+      const cleaned = cleanKey(key);
+      if (cleaned) cleanedOpenai[id] = cleaned;
+    });
+    onSaveAi(
+      { ...localAi, openai: { ...localAi.openai, baseUrl: localAi.openai.baseUrl.trim(), model: localAi.openai.model.trim() } },
+      { gemini: cleanKey(localKeys.gemini), openai: cleanedOpenai, jina: cleanKey(localKeys.jina) },
+    );
     onClose();
   };
 
   const handlePresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
       const value = e.target.value;
-      if (value) {
+      if (value !== 'custom') {
           setProxyUrl(value);
       }
   };
@@ -92,7 +106,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       console.log(`[1] Configuration:`);
       console.log(` - Target API: ${apiUrl}`);
-      console.log(` - Proxy configured: ${proxyUrl.trim() ? proxyUrl.trim() : '/api/proxy (Built-in)'}`);
+      console.log(` - Proxy configured: ${proxyUrl.trim() ? proxyUrl.trim() : 'none (direct)'}`);
       console.log(` - Headers sending: { "Authorization": "Bearer ${cleanKey.substring(0, 8)}..." }`);
 
       const res = await proxyFetch(apiUrl, {
@@ -134,7 +148,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         } else if (res.status === 403) {
           errMsg += " — Forbidden. Ensure your X Developer project has access enabled for v2 Tweet lookup.";
         } else if (res.status === 503) {
-          errMsg += " — X API often blocks public CORS proxies. Switch proxy to 'Built-in Server Proxy'.";
+          errMsg += " — X API often blocks public CORS proxies. Use your own proxy.";
         }
 
         console.error(`[3] Test Result: Error - ${errMsg}`);
@@ -158,7 +172,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     console.group("Notion API Connection Test");
     console.log(`[1] Configuration`);
     console.log(` - Target Endpoint: /search`);
-    console.log(` - Proxy used: ${proxyUrl.trim() || '/api/proxy (Built-in)'}`);
+    console.log(` - Proxy used: ${proxyUrl.trim() || 'none (direct)'}`);
     console.log(` - Auth Token (first 5 chars): ${cleanToken.substring(0, 5)}...`);
     
     try {
@@ -194,36 +208,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         <div className="space-y-6">
-          {/* Gemini AI Section */}
-          <div className="p-4 bg-slate-50 dark:bg-slate-700/30 rounded-lg border border-slate-100 dark:border-slate-700">
-            <h3 className="text-md font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
-              <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-              Gemini AI Settings
-            </h3>
-            <label htmlFor="gemini-model" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-              Model Selection
-            </label>
-            <select
-              id="gemini-model"
-              value={localGeminiModel}
-              onChange={(e) => setLocalGeminiModel(e.target.value)}
-              className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-colors dark:text-white text-sm"
-            >
-              <optgroup label="Gemini 3 Flash">
-                <option value="gemini-3.7-flash">Gemini 3.7 Flash (Default / Recommended)</option>
-                <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
-                <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
-                <option value="gemini-flash-latest">Gemini Flash Latest</option>
-                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite (High Throughput / Light)</option>
-              </optgroup>
-              <optgroup label="Gemini 3 Pro">
-                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview (High Reasoning)</option>
-              </optgroup>
-            </select>
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Select a lighter model like <strong>Gemini 3.1 Flash Lite</strong> if you are operating on a free tier or processing large lists.
-            </p>
-          </div>
+          <AiSettingsSection
+            settings={localAi}
+            keys={localKeys}
+            onChange={(nextSettings, nextKeys) => {
+              setLocalAi(nextSettings);
+              setLocalKeys(nextKeys);
+            }}
+          />
 
           {/* X / Twitter Section */}
           <div className="p-4 bg-slate-50 dark:bg-slate-700/30 rounded-lg border border-slate-100 dark:border-slate-700">
@@ -240,7 +232,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-colors dark:text-white"
             />
              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 mb-4">
-               Requires the v2 <strong>Bearer Token</strong> (starts with AAAA...) from your X Developer App. If omitted or unauthorized, public tweets automatically fall back to oEmbed scraping.
+               Optional. The X API refuses direct browser calls, so this token is only used when a proxy is set below. Without it, public posts are read through X's public embed endpoints when they allow it.
              </p>
             <div className="pt-2 border-t border-slate-200 dark:border-slate-600">
               <button
@@ -314,9 +306,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                  id="proxy-preset"
                  onChange={handlePresetChange}
                  className="w-full p-2.5 mb-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-colors dark:text-white text-sm"
-                 defaultValue=""
+                 value={PROXY_PRESETS.some(p => p.value === proxyUrl) ? proxyUrl : 'custom'}
               >
-                  <option value="" disabled>Select a preset...</option>
                   {PROXY_PRESETS.map(p => (
                       <option key={p.value} value={p.value}>{p.label}</option>
                   ))}
@@ -331,11 +322,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 type="text"
                 value={proxyUrl}
                 onChange={(e) => setProxyUrl(e.target.value)}
-                placeholder="https://corsproxy.io/?"
+                placeholder="No proxy"
                 className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-colors dark:text-white"
               />
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Used to bypass CORS when fetching YouTube/Twitter context or syncing to Notion.
+                Optional. Notion sync and the X API refuse direct browser calls, so they need a proxy you trust: your Notion token passes through it. Summaries work without one.
               </p>
               {proxyUrl.includes('cors-anywhere.herokuapp.com') && (
                 <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-md">
