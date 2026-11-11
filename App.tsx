@@ -7,7 +7,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { NotionSyncModal } from './components/NotionSyncModal';
 import { BulkActionBar } from './components/BulkActionBar';
 import { PwaControls } from './components/PwaControls';
-import { analyzeUrl, pacingFor, BookmarkResult } from './services/analyze';
+import { analyzeUrl, pacingFor, titleAndTagsFromSummary, BookmarkResult } from './services/analyze';
 import { rateLimitCount, resetRateLimitCount } from './services/ai/http';
 import { loadAiKeys, loadAiSettings, providerProblem, saveAiKeys, saveAiSettings } from './services/ai/settings';
 import { AiConfigError, AiKeys, AiSettings, isTransientError } from './services/ai/types';
@@ -116,7 +116,7 @@ const loadStoredBookmarks = (): Bookmark[] => {
         ? {
             status: 'error',
             errorMessage: 'Interrupted before it finished. Press Retry.',
-            title: /^(Queued|Reading page|Trying again|Updating|Processing batch)\.\.\.$/.test(b.title) ? 'Untitled' : b.title,
+            title: /^(Queued|Reading page|Trying again|Updating|Regenerating|Processing batch)\.\.\.$/.test(b.title) ? 'Untitled' : b.title,
           }
         : {}),
     }));
@@ -132,6 +132,8 @@ const App: React.FC = () => {
   
   // Selection State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Cards whose title and keywords are being written from a hand-typed summary.
+  const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   
   // Modal States
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -254,6 +256,96 @@ const App: React.FC = () => {
 
   const aiProblem = providerProblem(aiSettings, aiKeys);
 
+  /**
+   * Runs bookmarks through the AI provider: a small pool with paced starts,
+   * then one more pass for links that failed for a temporary reason.
+   * Used for new imports and for regenerating existing cards.
+   */
+  const processEntries = useCallback(async (entries: Bookmark[], activeLabel: string) => {
+    if (entries.length === 0) return;
+
+    const config = { settings: aiSettings, keys: aiKeys, xApiKey, proxyUrl: notionConfig.proxyUrl };
+    const pacing = pacingFor(aiSettings);
+    const isPlaceholder = (title: string) => /^(Reading page|Queued|Trying again|Updating|Regenerating)\.\.\.$/.test(title);
+    // On failure a card gets back the title it had before, not a status label.
+    const titleBefore = new Map<string, string>(entries.map(e => [e.id, isPlaceholder(e.title) ? 'Untitled' : e.title]));
+    const restoreTitle = (b: Bookmark) => titleBefore.get(b.id) ?? 'Untitled';
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+    resetRateLimitCount(pacing.label);
+    let nextStart = 0;
+    let configFailure: string | null = null;
+
+    // Spaces out request starts. Each time the service says "slow down", the
+    // gap widens for the rest of this run (up to four times the base).
+    const waitForSlot = async () => {
+        if (pacing.intervalMs <= 0) return;
+        const gap = pacing.intervalMs * Math.min(4, 1 + rateLimitCount(pacing.label));
+        const startAt = Math.max(Date.now(), nextStart);
+        nextStart = startAt + gap;
+        const wait = startAt - Date.now();
+        if (wait > 0) await sleep(wait);
+    };
+
+    /** Runs the given entries through a small pool. Returns those worth one more try. */
+    const runPool = async (batch: Bookmark[], label: string): Promise<Bookmark[]> => {
+        const retryable: Bookmark[] = [];
+        let cursor = 0;
+
+        const worker = async () => {
+            while (!configFailure) {
+                const entry = batch[cursor++];
+                if (!entry) return;
+
+                await waitForSlot();
+                if (configFailure) return;
+
+                setBookmarks(prev => prev.map(b => (b.id === entry.id ? { ...b, title: label, status: 'processing', errorMessage: undefined } : b)));
+
+                try {
+                    // One URL per request, so nothing leaks between bookmarks.
+                    const res = await analyzeUrl(entry.url, config);
+                    setBookmarks(prev => prev.map(b => (b.id === entry.id && b.status === 'processing' ? applyResult(b, res) : b)));
+                } catch (e: any) {
+                    const msg = e instanceof Error ? e.message : String(e);
+                    // A configuration problem will fail every remaining URL the same way.
+                    if (e instanceof AiConfigError) {
+                        configFailure = msg;
+                        return;
+                    }
+                    if (isTransientError(e)) retryable.push(entry);
+                    setBookmarks(prev => prev.map(b =>
+                        b.id === entry.id ? { ...b, title: restoreTitle(b), status: 'error', errorMessage: msg } : b
+                    ));
+                }
+            }
+        };
+
+        await Promise.all(Array.from({ length: Math.min(pacing.concurrency, batch.length) }, worker));
+        return retryable;
+    };
+
+    const failed = await runPool(entries, activeLabel);
+
+    // Overload and dropped connections usually clear within seconds: give
+    // those links one more go before handing them back to the user.
+    if (!configFailure && failed.length > 0) {
+        await sleep(12000);
+        await runPool(failed, 'Trying again...');
+    }
+
+    if (configFailure) {
+        const message = configFailure;
+        const ids = new Set(entries.map(b => b.id));
+        setError(message);
+        setBookmarks(prev => prev.map(b =>
+            ids.has(b.id) && (b.status === 'processing' || isPlaceholder(b.title))
+                ? { ...b, title: restoreTitle(b), status: 'error', errorMessage: message }
+                : b
+        ));
+    }
+  }, [xApiKey, notionConfig.proxyUrl, aiSettings, aiKeys]);
+
   const handleProcessUrls = useCallback(async (urlData: { url: string; addDate?: string }[]) => {
     if (!urlData.length) return;
 
@@ -296,88 +388,66 @@ const App: React.FC = () => {
 
     setBookmarks(prev => [...prev, ...newEntries]);
 
-    const config = { settings: aiSettings, keys: aiKeys, xApiKey, proxyUrl: notionConfig.proxyUrl };
-    const pacing = pacingFor(aiSettings);
-    const untitle = (b: Bookmark) => (/^(Reading page|Queued|Trying again)\.\.\.$/.test(b.title) ? 'Untitled' : b.title);
-    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-    resetRateLimitCount(pacing.label);
-    let nextStart = 0;
-    let configFailure: string | null = null;
-
-    // Spaces out request starts. Each time the service says "slow down", the
-    // gap widens for the rest of this import (up to four times the base).
-    const waitForSlot = async () => {
-        if (pacing.intervalMs <= 0) return;
-        const gap = pacing.intervalMs * Math.min(4, 1 + rateLimitCount(pacing.label));
-        const startAt = Math.max(Date.now(), nextStart);
-        nextStart = startAt + gap;
-        const wait = startAt - Date.now();
-        if (wait > 0) await sleep(wait);
-    };
-
-    /** Runs the given entries through a small pool. Returns those worth one more try. */
-    const runPool = async (entries: Bookmark[], label: string): Promise<Bookmark[]> => {
-        const retryable: Bookmark[] = [];
-        let cursor = 0;
-
-        const worker = async () => {
-            while (!configFailure) {
-                const entry = entries[cursor++];
-                if (!entry) return;
-
-                await waitForSlot();
-                if (configFailure) return;
-
-                setBookmarks(prev => prev.map(b => (b.id === entry.id ? { ...b, title: label, status: 'processing', errorMessage: undefined } : b)));
-
-                try {
-                    // One URL per request, so nothing leaks between bookmarks.
-                    const res = await analyzeUrl(entry.url, config);
-                    setBookmarks(prev => prev.map(b => (b.id === entry.id && b.status === 'processing' ? applyResult(b, res) : b)));
-                } catch (e: any) {
-                    const msg = e instanceof Error ? e.message : String(e);
-                    // A configuration problem will fail every remaining URL the same way.
-                    if (e instanceof AiConfigError) {
-                        configFailure = msg;
-                        return;
-                    }
-                    if (isTransientError(e)) retryable.push(entry);
-                    setBookmarks(prev => prev.map(b =>
-                        b.id === entry.id ? { ...b, title: untitle(b), status: 'error', errorMessage: msg } : b
-                    ));
-                }
-            }
-        };
-
-        await Promise.all(Array.from({ length: Math.min(pacing.concurrency, entries.length) }, worker));
-        return retryable;
-    };
-
-    const failed = await runPool(newEntries, 'Reading page...');
-
-    // Overload and dropped connections usually clear within seconds: give
-    // those links one more go before handing them back to the user.
-    if (!configFailure && failed.length > 0) {
-        await sleep(12000);
-        await runPool(failed, 'Trying again...');
-    }
-
-    if (configFailure) {
-        const message = configFailure;
-        const ids = new Set(newEntries.map(b => b.id));
-        setError(message);
-        setBookmarks(prev => prev.map(b =>
-            ids.has(b.id) && b.status === 'processing'
-                ? { ...b, title: untitle(b), status: 'error', errorMessage: message }
-                : b
-        ));
-        setIsLoading(false);
-        return;
-    }
+    await processEntries(newEntries, 'Reading page...');
 
     setIsLoading(false);
     playSuccessChime();
+  }, [bookmarks, aiSettings, aiKeys, processEntries]);
+
+  /** Re-reads the selected links and replaces their title, summary and keywords. */
+  const handleBulkRegenerate = useCallback(async () => {
+    const targets = bookmarks.filter(b => selectedIds.has(b.id) && b.status !== 'processing');
+    if (targets.length === 0 || isLoading) return;
+
+    const problem = providerProblem(aiSettings, aiKeys);
+    if (problem) {
+      setError(problem);
+      setIsSettingsOpen(true);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    await processEntries(targets, 'Regenerating...');
+    setIsLoading(false);
+    playSuccessChime();
+  }, [bookmarks, selectedIds, isLoading, aiSettings, aiKeys, processEntries]);
+
+  /** Writes a title and keywords from a summary the user typed. The summary is kept as is. */
+  const handleTitleAndTagsFromSummary = useCallback(async (id: string) => {
+    const target = bookmarks.find(b => b.id === id);
+    if (!target || !target.summary.trim() || target.status === 'processing') return;
+
+    const problem = providerProblem(aiSettings, aiKeys);
+    if (problem) {
+      setError(problem);
+      setIsSettingsOpen(true);
+      return;
+    }
+
+    setGeneratingIds(prev => new Set(prev).add(id));
+    try {
+        const res = await titleAndTagsFromSummary(target.url, target.summary.trim(), { settings: aiSettings, keys: aiKeys, xApiKey, proxyUrl: notionConfig.proxyUrl });
+        setError(null);
+        setBookmarks(prev => prev.map(b => b.id === id ? {
+            ...b,
+            title: res.title || b.title,
+            keywords: res.keywords.length > 0 ? res.keywords : b.keywords,
+            status: 'done',
+            errorMessage: undefined,
+            confidenceScore: 100,
+            confidenceReason: 'Summary written by you. The title and keywords were generated from it.',
+        } : b));
+    } catch (e: any) {
+        // Nothing on the card changes when this fails.
+        setError(`Could not generate a title and keywords: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+        setGeneratingIds(prev => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+        });
+    }
   }, [bookmarks, xApiKey, notionConfig.proxyUrl, aiSettings, aiKeys]);
 
   const handleUpdateBookmark = useCallback((updated: Bookmark) => {
@@ -441,17 +511,18 @@ const App: React.FC = () => {
       setSelectedIds(new Set());
   }, []);
 
-  const handleBulkAddKeyword = useCallback((keyword: string) => {
+  const handleBulkAddKeyword = useCallback((input: string) => {
+      // Several tags can be added at once, separated by commas.
+      const toAdd = input.split(',').map(k => k.trim()).filter(Boolean);
+      if (toAdd.length === 0) return;
       setBookmarks(prev => prev.map(b => {
-          if (selectedIds.has(b.id)) {
-              // Ensure keywords array exists
-              const currentKeywords = Array.isArray(b.keywords) ? b.keywords : [];
+          if (!selectedIds.has(b.id)) return b;
+          const keywords = Array.isArray(b.keywords) ? [...b.keywords] : [];
+          for (const keyword of toAdd) {
               // Case insensitive check to avoid duplicates
-              if (!currentKeywords.some(k => k.toLowerCase() === keyword.toLowerCase())) {
-                  return { ...b, keywords: [...currentKeywords, keyword] };
-              }
+              if (!keywords.some(k => k.toLowerCase() === keyword.toLowerCase())) keywords.push(keyword);
           }
-          return b;
+          return keywords.length === (b.keywords?.length ?? 0) ? b : { ...b, keywords };
       }));
   }, [selectedIds]);
 
@@ -484,6 +555,8 @@ const App: React.FC = () => {
             onUpdate={handleUpdateBookmark} 
             onDelete={handleDeleteBookmark} 
             onRetry={handleRetryBookmark}
+            onTitleAndTagsFromSummary={handleTitleAndTagsFromSummary}
+            generatingIds={generatingIds}
             selectedIds={selectedIds}
             onToggleSelect={handleToggleSelect}
             onSelectAll={handleSelectAll}
@@ -497,6 +570,8 @@ const App: React.FC = () => {
              selectedCount={selectedIds.size}
              onClearSelection={handleClearSelection}
              onAddKeyword={handleBulkAddKeyword}
+             onRegenerate={handleBulkRegenerate}
+             busy={isLoading}
           />
       )}
       

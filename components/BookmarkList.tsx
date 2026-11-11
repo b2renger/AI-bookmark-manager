@@ -20,6 +20,8 @@ interface BookmarkListProps {
   onUpdate: (bookmark: Bookmark) => void;
   onDelete: (id: string) => void;
   onRetry: (id: string) => void;
+  onTitleAndTagsFromSummary: (id: string) => void;
+  generatingIds: Set<string>;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
   onSelectAll: (ids: string[]) => void;
@@ -34,6 +36,8 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({
   onUpdate, 
   onDelete, 
   onRetry,
+  onTitleAndTagsFromSummary,
+  generatingIds,
   selectedIds,
   onToggleSelect,
   onSelectAll,
@@ -303,6 +307,8 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({
             onUpdate={onUpdate} 
             onDelete={onDelete} 
             onRetry={onRetry} 
+            onTitleAndTagsFromSummary={onTitleAndTagsFromSummary}
+            isGenerating={generatingIds.has(bookmark.id)}
             isSelected={selectedIds.has(bookmark.id)}
             onToggleSelect={onToggleSelect}
           />

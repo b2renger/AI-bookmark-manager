@@ -21,7 +21,14 @@ interface BookmarkItemProps {
   onUpdate: (bookmark: Bookmark) => void;
   onDelete: (id: string) => void;
   onRetry: (id: string) => void;
+  /** Writes a title and keywords from the summary on the card. */
+  onTitleAndTagsFromSummary: (id: string) => void;
+  /** True while that request is running. */
+  isGenerating: boolean;
 }
+
+/** A hand-written summary shorter than this gives the model too little to work with. */
+const MIN_SUMMARY_FOR_GENERATION = 20;
 
 const EditableField: React.FC<{ value: string; onSave: (newValue: string) => void; isTextArea?: boolean }> = ({ value, onSave, isTextArea = false }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -233,7 +240,9 @@ export const BookmarkItem: React.FC<BookmarkItemProps> = ({
   onToggleSelect, 
   onUpdate, 
   onDelete, 
-  onRetry 
+  onRetry,
+  onTitleAndTagsFromSummary,
+  isGenerating
 }) => {
   const handleTitleUpdate = (newTitle: string) => {
     onUpdate({ ...bookmark, title: newTitle });
@@ -436,11 +445,23 @@ export const BookmarkItem: React.FC<BookmarkItemProps> = ({
               {/* Summary with inline editable area */}
               <div>
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                  <span>AI Summary</span>
+                  <span>Summary</span>
                 </label>
                 <div className="text-sm text-slate-700 dark:text-slate-200 mt-1 leading-relaxed">
                   <EditableField value={bookmark.summary || ''} onSave={handleSummaryUpdate} isTextArea />
                 </div>
+                {/* Lets a hand-written summary drive the rest of the card. */}
+                {(bookmark.summary || '').trim().length >= MIN_SUMMARY_FOR_GENERATION && (
+                  <button
+                    onClick={() => onTitleAndTagsFromSummary(bookmark.id)}
+                    disabled={isGenerating}
+                    className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-750 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors disabled:opacity-60"
+                    title="Write a new title and keywords from this summary. The summary itself is not changed."
+                  >
+                    {isGenerating ? <Spinner className="h-3.5 w-3.5 border-blue-500" /> : <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-300" />}
+                    <span>{isGenerating ? 'Writing title and keywords…' : 'Title and keywords from this summary'}</span>
+                  </button>
+                )}
               </div>
 
               {/* Sources */}

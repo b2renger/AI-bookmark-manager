@@ -77,6 +77,27 @@ function score(evidence: Evidence, label: string, onDevice: boolean): { score: n
   return { score: 10, reason: 'The content could not be read, so no summary was written.' };
 }
 
+/**
+ * Writes a title and keywords for a summary the user typed themselves.
+ * The summary is the only source: no page is fetched.
+ */
+export async function titleAndTagsFromSummary(
+  url: string,
+  summary: string,
+  config: AnalyzeConfig,
+): Promise<{ title: string; keywords: string[] }> {
+  const platform = detectPlatform(url);
+  const input: AnalyzeInput = {
+    url,
+    platform,
+    context: { evidence: 'content', text: summary, label: 'your summary' },
+    language: config.settings.summaryLanguage,
+    task: 'from-summary',
+  };
+  const result = await runProvider(input, config, true);
+  return { title: result.analysis.title, keywords: result.analysis.keywords };
+}
+
 /** Analyses one URL. Throws on configuration, network and rate-limit errors. */
 export async function analyzeUrl(url: string, config: AnalyzeConfig): Promise<BookmarkResult> {
   const { settings, keys } = config;

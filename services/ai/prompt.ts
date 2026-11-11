@@ -81,6 +81,14 @@ export function buildFetchingPrompt(input: AnalyzeInput): string {
 /** Prompt for a provider that only sees the text we hand it. */
 export function buildContextPrompt(input: AnalyzeInput, maxChars: number): string {
   const ctx = input.context;
+  if (input.task === 'from-summary' && ctx?.text) {
+    const language = input.language === 'fr'
+      ? 'Write the title and keywords in French.'
+      : input.language === 'en'
+        ? 'Write the title and keywords in English.'
+        : 'Write the title and keywords in the language of the summary.';
+    return `The user wrote the summary below for this bookmark. Write a short, specific title and 3 to 5 keywords that fit it.\n\nURL: ${input.url}\n\nSummary written by the user:\n"""\n${ctx.text.slice(0, maxChars)}\n"""\n\nUse only what the summary says. Copy the summary unchanged into "summary", set "coverage" to "full", and set "publicationDate" and "author" to null unless the summary states them.\n${language}\n${SHAPE_REMINDER}`;
+  }
   if (!ctx || ctx.evidence === 'none' || !ctx.text) {
     return `No content could be retrieved for this URL.\n\nURL: ${input.url}\n\nReturn "coverage": "none", an empty "summary", an empty "keywords" list, and use the site name as "title".\n${SHAPE_REMINDER}`;
   }

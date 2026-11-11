@@ -78,6 +78,11 @@ export interface AnalyzeInput {
   /** Present for providers that cannot fetch the page themselves. */
   context: PageContext | null;
   language: SummaryLanguage;
+  /**
+   * 'from-summary': the text in `context` is a summary the user wrote. Only a
+   * title and keywords are wanted; the summary itself must not be rewritten.
+   */
+  task?: 'analyze' | 'from-summary';
 }
 
 export interface ProviderResult {
