@@ -12,6 +12,8 @@ import { rateLimitCount, resetRateLimitCount } from './services/ai/http';
 import { loadAiKeys, loadAiSettings, providerProblem, saveAiKeys, saveAiSettings } from './services/ai/settings';
 import { AiConfigError, AiKeys, AiSettings, isTransientError } from './services/ai/types';
 import { LOCAL_PROXY } from './lib/proxyFetch';
+import { sleep } from './lib/timers';
+import { beginImportSession, endImportSession } from './lib/background';
 import { Bookmark } from './types';
 
 const AI_BOOKMARKS_STORAGE_KEY = 'ai-bookmark-manager-bookmarks';
@@ -110,15 +112,10 @@ const loadStoredBookmarks = (): Bookmark[] => {
       ...b,
       // Ensure legacy data has a keywords array
       keywords: Array.isArray(b.keywords) ? b.keywords : [],
-      // Nothing is running right after a load: an item still marked as
-      // processing was cut off by a reload or by closing the app.
-      ...(b.status === 'processing'
-        ? {
-            status: 'error',
-            errorMessage: 'Interrupted before it finished. Press Retry.',
-            title: /^(Queued|Reading page|Trying again|Updating|Regenerating|Processing batch)\.\.\.$/.test(b.title) ? 'Untitled' : b.title,
-          }
-        : {}),
+      // An item still marked as processing was cut off by a reload, or by the
+      // browser closing or discarding the app. It goes back in the queue and
+      // is picked up again on start (see the resume effect in App).
+      ...(b.status === 'processing' ? { title: 'Queued...' } : {}),
     }));
   } catch (e) {
     return [];
@@ -270,7 +267,8 @@ const App: React.FC = () => {
     // On failure a card gets back the title it had before, not a status label.
     const titleBefore = new Map<string, string>(entries.map(e => [e.id, isPlaceholder(e.title) ? 'Untitled' : e.title]));
     const restoreTitle = (b: Bookmark) => titleBefore.get(b.id) ?? 'Untitled';
-    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+    const progress = { total: entries.length, done: 0, failed: 0 };
+    beginImportSession(() => progress);
 
     resetRateLimitCount(pacing.label);
     let nextStart = 0;
@@ -306,6 +304,7 @@ const App: React.FC = () => {
                     // One URL per request, so nothing leaks between bookmarks.
                     const res = await analyzeUrl(entry.url, config);
                     setBookmarks(prev => prev.map(b => (b.id === entry.id && b.status === 'processing' ? applyResult(b, res) : b)));
+                    progress.done++;
                 } catch (e: any) {
                     const msg = e instanceof Error ? e.message : String(e);
                     // A configuration problem will fail every remaining URL the same way.
@@ -314,6 +313,7 @@ const App: React.FC = () => {
                         return;
                     }
                     if (isTransientError(e)) retryable.push(entry);
+                    else progress.failed++;
                     setBookmarks(prev => prev.map(b =>
                         b.id === entry.id ? { ...b, title: restoreTitle(b), status: 'error', errorMessage: msg } : b
                     ));
@@ -331,7 +331,10 @@ const App: React.FC = () => {
     // those links one more go before handing them back to the user.
     if (!configFailure && failed.length > 0) {
         await sleep(12000);
-        await runPool(failed, 'Trying again...');
+        const stillFailing = await runPool(failed, 'Trying again...');
+        progress.failed += stillFailing.length;
+    } else {
+        progress.failed += failed.length;
     }
 
     if (configFailure) {
@@ -343,7 +346,10 @@ const App: React.FC = () => {
                 ? { ...b, title: restoreTitle(b), status: 'error', errorMessage: message }
                 : b
         ));
+        progress.failed = progress.total - progress.done;
     }
+
+    endImportSession();
   }, [xApiKey, notionConfig.proxyUrl, aiSettings, aiKeys]);
 
   const handleProcessUrls = useCallback(async (urlData: { url: string; addDate?: string }[]) => {
@@ -412,6 +418,30 @@ const App: React.FC = () => {
     setIsLoading(false);
     playSuccessChime();
   }, [bookmarks, selectedIds, isLoading, aiSettings, aiKeys, processEntries]);
+
+  // Continue an import that was cut off: links still queued when the app was
+  // closed, reloaded or discarded are processed again on start.
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (resumedRef.current) return;
+    resumedRef.current = true;
+
+    const unfinished = bookmarks.filter(b => b.status === 'processing');
+    if (unfinished.length === 0) return;
+
+    if (providerProblem(aiSettings, aiKeys)) {
+      const ids = new Set(unfinished.map(b => b.id));
+      setBookmarks(prev => prev.map(b => ids.has(b.id)
+        ? { ...b, title: 'Untitled', status: 'error', errorMessage: 'Interrupted before it finished. Press Retry.' }
+        : b));
+      return;
+    }
+
+    setIsLoading(true);
+    void processEntries(unfinished, 'Reading page...').then(() => setIsLoading(false));
+    // Runs once, with the state loaded at start.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Writes a title and keywords from a summary the user typed. The summary is kept as is. */
   const handleTitleAndTagsFromSummary = useCallback(async (id: string) => {

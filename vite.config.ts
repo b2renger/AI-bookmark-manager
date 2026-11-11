@@ -68,6 +68,8 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallback: 'index.html',
+        // Keep-alive and notification handling (public/sw-background.js).
+        importScripts: ['sw-background.js'],
         // Keep the multi-megabyte on-device model worker out of the precache:
         // only people who choose that option should download it.
         globIgnores: ['**/webllmWorker-*.js'],

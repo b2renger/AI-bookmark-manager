@@ -1,3 +1,4 @@
+import { sleep } from '../../lib/timers';
 import { AiBusyError, AiNetworkError, AiRateLimitError } from './types';
 
 export interface HttpResult {
@@ -13,9 +14,8 @@ const MAX_RETRIES = 2;
 const MAX_WAIT_MS = 30_000;
 const NETWORK_RETRY_DELAYS_MS = [1500, 4000];
 
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// Waits must keep time in a hidden tab, or a background import crawls.
+const delay = sleep;
 
 /**
  * Shared back-off per service.

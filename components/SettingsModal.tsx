@@ -6,6 +6,7 @@ import { proxyFetch } from '../lib/proxyFetch';
 import { AiSettingsSection } from './AiSettingsSection';
 import { HelpLinks, guideUrl } from './HelpLinks';
 import { versionDetails } from '../lib/version';
+import { NotifyState, notifyState, setNotifications } from '../lib/background';
 import { cleanKey } from '../services/ai/settings';
 import { AiKeys, AiSettings } from '../services/ai/types';
 
@@ -48,6 +49,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     error: null,
     success: null
   });
+  const [notify, setNotify] = useState<NotifyState>(() => notifyState());
   const [testXStatus, setTestXStatus] = useState<{ loading: boolean; error: string | null; success: string | null }>({
     loading: false,
     error: null,
@@ -211,6 +213,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               setLocalKeys(nextKeys);
             }}
           />
+
+          {/* Background imports */}
+          <div className="p-4 bg-slate-50 dark:bg-slate-700/30 rounded-lg border border-slate-100 dark:border-slate-700">
+            <h3 className="text-md font-semibold text-slate-800 dark:text-slate-200 mb-3">Background imports</h3>
+            <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={notify === 'on'}
+                disabled={notify === 'unsupported' || notify === 'blocked'}
+                onChange={async (e) => setNotify(await setNotifications(e.target.checked))}
+              />
+              <span>
+                Notify me when an import finishes or pauses in the background
+                <span className="block text-xs text-slate-500 dark:text-slate-400">
+                  {notify === 'blocked'
+                    ? 'Notifications are blocked for this site. Allow them in the browser\'s site settings, then come back here.'
+                    : notify === 'unsupported'
+                      ? 'This browser does not support notifications for web apps.'
+                      : 'Only shown when the app is not on screen.'}
+                </span>
+              </span>
+            </label>
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+              An import keeps going for a while after you switch away. If the browser stops it, the remaining links are kept and continue by themselves the next time you open the app.
+            </p>
+          </div>
 
           {/* X / Twitter Section */}
           <div className="p-4 bg-slate-50 dark:bg-slate-700/30 rounded-lg border border-slate-100 dark:border-slate-700">

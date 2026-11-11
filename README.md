@@ -29,6 +29,15 @@ Your browser may ask for permission to let the site reach your local network.
 
 The site is a PWA. In Chrome or Edge, use the **Install** offer shown in the app or the browser menu's "Install app" / "Add to Home screen". On iPhone and iPad, open it in Safari and use **Share > Add to Home Screen**. Once installed it starts without a network; cloud models still need a connection, and new versions are offered with a **Reload** button.
 
+## Background imports
+
+An import keeps running for a while after you switch to another app or tab. Browsers eventually pause background pages (Chrome on Android after about five minutes), so:
+
+- unfinished links are kept, and the import continues by itself the next time the app is opened;
+- with **Settings > Background imports** turned on, a notification tells you when an import finished or paused.
+
+A long import cannot run fully unattended: that would need a server.
+
 ## Version
 
 The version is shown under the title and at the bottom of Settings. Its last number is the deployment counter, so it goes up by one each time the site is deployed.
