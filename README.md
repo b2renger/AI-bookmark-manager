@@ -6,6 +6,8 @@ The app is a static site. There is no server: your API keys and your bookmarks s
 
 ## Choosing a model
 
+Step-by-step instructions for every key and service are in the [setup guide](docs/SETUP.md). Each field in Settings also links to the right page.
+
 Open **Settings > AI model**.
 
 | Option | What you need | Notes |
@@ -38,7 +40,7 @@ Browsers block direct calls to some services. Summaries work without a proxy, bu
 - **Notion sync**
 - **The X API bearer token**
 
-Set a proxy URL you trust under **Settings > Proxy Configuration** (for example your own Cloudflare Worker), or use the local dev proxy below.
+The repository includes a small private proxy to run on your own free Cloudflare account (`proxy/cloudflare-worker.js`). See [Your own proxy](docs/SETUP.md#your-own-proxy). Public CORS proxies are not recommended: your tokens would pass through them.
 
 ## Privacy
 

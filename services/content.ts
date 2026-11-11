@@ -85,7 +85,7 @@ async function fetchTweetContext(url: string, apiKey?: string, proxyUrl?: string
   // The official API refuses browser calls, so it is only tried through a proxy.
   if (apiKey && proxyUrl) {
     try {
-      const apiUrl = `https://api.twitter.com/2/tweets/${tweetId}?tweet.fields=text,created_at,author_id`;
+      const apiUrl = `https://api.x.com/2/tweets/${tweetId}?tweet.fields=text,created_at,author_id`;
       const res = await fetchWithTimeout(apiUrl, { headers: { Authorization: `Bearer ${apiKey.trim().replace(/^Bearer\s+/i, '')}` } }, proxyUrl);
       if (res.ok) {
         const data = await res.json();

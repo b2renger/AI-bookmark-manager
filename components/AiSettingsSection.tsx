@@ -6,6 +6,7 @@ import { AiKeys, AiSettings, ProviderId } from '../services/ai/types';
 import { DeviceProfile, ModelAvailability, assessAllModels, probeDevice } from '../services/ai/webgpu/deviceProbe';
 import { WebGPUModelSpec, formatSize } from '../services/ai/webgpu/models';
 import type { WorkerProgress } from '../services/ai/webgpu/protocol';
+import { HelpLinks, guideUrl } from './HelpLinks';
 
 interface Props {
   settings: AiSettings;
@@ -173,11 +174,11 @@ export const AiSettingsSection: React.FC<Props> = ({ settings, keys, onChange })
               placeholder="Paste your key"
               className={inputClass}
             />
-            <p className={hintClass}>
-              Create a free key at{' '}
-              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">aistudio.google.com/apikey</a>.
-              Free-tier requests are limited per minute and per day.
-            </p>
+            <p className={hintClass}>Free-tier requests are limited per minute and per day.</p>
+            <HelpLinks links={[
+              { label: 'Get a free key (Google AI Studio)', href: 'https://aistudio.google.com/apikey' },
+              { label: 'Step-by-step guide', href: guideUrl('google-gemini') },
+            ]} />
           </div>
 
           <div>
@@ -231,6 +232,11 @@ export const AiSettingsSection: React.FC<Props> = ({ settings, keys, onChange })
                 This page's origin: <code className="font-mono">{window.location.origin}</code>
               </p>
             )}
+            <HelpLinks links={[
+              ...(preset.keyUrl ? [{ label: `Get a key (${preset.keyUrl.replace(/^https:\/\//, '').split('/')[0]})`, href: preset.keyUrl }] : []),
+              ...(preset.docsUrl ? [{ label: 'Official instructions', href: preset.docsUrl }] : []),
+              ...(preset.guideAnchor ? [{ label: 'Step-by-step guide', href: guideUrl(preset.guideAnchor) }] : []),
+            ]} />
           </div>
 
           <div>
@@ -257,12 +263,6 @@ export const AiSettingsSection: React.FC<Props> = ({ settings, keys, onChange })
                 placeholder="Paste your key"
                 className={inputClass}
               />
-              {preset.keyUrl && (
-                <p className={hintClass}>
-                  Get a key at{' '}
-                  <a href={preset.keyUrl} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">{preset.keyUrl.replace(/^https:\/\//, '')}</a>.
-                </p>
-              )}
             </div>
           )}
 
@@ -368,6 +368,7 @@ export const AiSettingsSection: React.FC<Props> = ({ settings, keys, onChange })
                 </div>
               )}
 
+              <HelpLinks links={[{ label: 'Step-by-step guide', href: guideUrl('on-this-device-webgpu') }]} />
               <p className={hintClass}>
                 The model is downloaded once and kept by the browser. Keep this tab open during the download. If you skip the button, the download starts with the first link you process.
               </p>
@@ -425,6 +426,12 @@ export const AiSettingsSection: React.FC<Props> = ({ settings, keys, onChange })
               placeholder="Jina API key (optional, raises the rate limit)"
               className={`${inputClass} mt-2`}
             />
+          )}
+          {settings.reader === 'jina' && (
+            <HelpLinks links={[
+              { label: 'Get a free Jina key', href: 'https://jina.ai/reader' },
+              { label: 'Step-by-step guide', href: guideUrl('jina-reader') },
+            ]} />
           )}
         </div>
 

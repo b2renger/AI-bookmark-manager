@@ -4,6 +4,7 @@ import { CloseIcon } from './common/Icons';
 import { getAccessibleDatabases } from '../services/notionService';
 import { proxyFetch } from '../lib/proxyFetch';
 import { AiSettingsSection } from './AiSettingsSection';
+import { HelpLinks, guideUrl } from './HelpLinks';
 import { cleanKey } from '../services/ai/settings';
 import { AiKeys, AiSettings } from '../services/ai/types';
 
@@ -21,9 +22,8 @@ interface SettingsModalProps {
 
 const PROXY_PRESETS = [
     { label: "None (default)", value: "" },
-    { label: "Local dev server (only with npm run dev:proxy)", value: "/api/proxy" },
     { label: "Your own Cloudflare Worker (set the URL below)", value: "https://your-worker-name.workers.dev/?" },
-    { label: "CORSProxy.io (public, often blocked)", value: "https://corsproxy.io/?" },
+    { label: "Local dev server (only with npm run dev:proxy)", value: "/api/proxy" },
 ];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -97,68 +97,62 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setTestXStatus({ loading: false, error: "Please enter an X API Bearer Token first.", success: null });
       return;
     }
+    const proxy = proxyUrl.trim();
+    if (!proxy) {
+      setTestXStatus({
+        loading: false,
+        error: "The X API refuses calls made directly from a web page, so this token needs a proxy. Set one under Proxy Configuration below (see the setup guide). Without a token, public posts are still read through X's public embed endpoints.",
+        success: null,
+      });
+      return;
+    }
     setTestXStatus({ loading: true, error: null, success: null });
-    
-    console.group("X API Connection Test");
+
     try {
-      // Test the credentials against the /2/tweets endpoint which is accessible with App-only Bearer Tokens
-      const apiUrl = `https://api.twitter.com/2/tweets?ids=20`; // Jack's first tweet
+      // Post lookup works with an app-only Bearer Token.
+      const res = await proxyFetch('https://api.x.com/2/tweets?ids=20', {
+        headers: { 'Authorization': `Bearer ${cleanKey}` }
+      }, proxy);
 
-      console.log(`[1] Configuration:`);
-      console.log(` - Target API: ${apiUrl}`);
-      console.log(` - Proxy configured: ${proxyUrl.trim() ? proxyUrl.trim() : 'none (direct)'}`);
-      console.log(` - Headers sending: { "Authorization": "Bearer ${cleanKey.substring(0, 8)}..." }`);
-
-      const res = await proxyFetch(apiUrl, {
-        headers: {
-          'Authorization': `Bearer ${cleanKey}`
-        }
-      }, proxyUrl.trim() || undefined);
-      
-      console.log(`[2] Response Received:`);
-      console.log(` - Status Code: ${res.status} ${res.statusText}`);
-
-      let errData = null;
-      let rawText = '';
+      const rawText = await res.text();
+      let data: any = null;
       try {
-        rawText = await res.text();
-        errData = JSON.parse(rawText);
-      } catch(e) {
-        // Raw text maintained
+        data = JSON.parse(rawText);
+      } catch {
+        // not JSON
       }
 
       if (res.ok) {
-        console.log(`[3] Test Result: Success`);
-        setTestXStatus({ 
-          loading: false, 
-          error: null, 
-          success: `Success! Connected to X API.` 
-        });
-      } else {
-        let errMsg = `Status ${res.status}: ${res.statusText || 'Error'}`;
-        if (errData && errData.title) {
-          errMsg = `Status ${res.status}: ${errData.title}`;
-          if (errData.detail) errMsg += ` (${errData.detail})`;
-        } else if (errData && errData.error) {
-          errMsg = `Status ${res.status}: ${errData.error}`;
-        }
-
-        if (res.status === 401) {
-          errMsg += " — Invalid token. Ensure you pasted the App 'Bearer Token' (starts with AAAAA...) from developer.x.com, not the API Key or Secret.";
-        } else if (res.status === 403) {
-          errMsg += " — Forbidden. Ensure your X Developer project has access enabled for v2 Tweet lookup.";
-        } else if (res.status === 503) {
-          errMsg += " — X API often blocks public CORS proxies. Use your own proxy.";
-        }
-
-        console.error(`[3] Test Result: Error - ${errMsg}`);
-        setTestXStatus({ loading: false, error: errMsg, success: null });
+        setTestXStatus({ loading: false, error: null, success: 'Success! Connected to the X API.' });
+        return;
       }
+
+      // X's own errors carry a title/detail (or an errors list). Anything else
+      // was produced by the proxy before the request ever reached X.
+      const fromX = !!data && (typeof data.title === 'string' || typeof data.detail === 'string' || Array.isArray(data.errors));
+      const proxyMessage = data && (typeof data.error === 'string' ? data.error : data.error?.message || data.message);
+
+      let errMsg: string;
+      if (!fromX) {
+        errMsg = `The proxy refused the request (status ${res.status}${proxyMessage ? `: ${proxyMessage}` : ''}). This is not an answer from X, so the token was not tested. Check the proxy URL, or use your own proxy as described in the setup guide.`;
+      } else {
+        errMsg = `X answered ${res.status}: ${data.title || 'Error'}${data.detail ? ` (${data.detail})` : ''}`;
+        if (res.status === 401) {
+          errMsg += " — Invalid token. Paste the app's Bearer Token from the X developer console, not the API Key or Secret.";
+        } else if (res.status === 403) {
+          errMsg += " — The token is valid but X refuses this request. Check that the developer account has access (a plan or credits) for post lookup.";
+        } else if (res.status === 429) {
+          errMsg += " — Rate limit reached. Try again later.";
+        }
+      }
+      setTestXStatus({ loading: false, error: errMsg, success: null });
     } catch (e: any) {
-      console.error(`[3] Test Result: Exception - ${e.message}`, e);
-      setTestXStatus({ loading: false, error: `Network exception: ${e.message || "Failed to fetch from X API."}`, success: null });
+      setTestXStatus({
+        loading: false,
+        error: `Could not reach the proxy (${e.message || 'network error'}). Check the proxy URL and that it allows this site.`,
+        success: null,
+      });
     }
-    console.groupEnd();
   };
 
   const handleTestConnection = async () => {
@@ -234,6 +228,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 mb-4">
                Optional. The X API refuses direct browser calls, so this token is only used when a proxy is set below. Without it, public posts are read through X's public embed endpoints when they allow it.
              </p>
+             <HelpLinks links={[
+               { label: 'Get a Bearer Token (X developer console)', href: 'https://console.x.com' },
+               { label: 'Step-by-step guide', href: guideUrl('x--twitter') },
+             ]} />
             <div className="pt-2 border-t border-slate-200 dark:border-slate-600">
               <button
                 onClick={handleTestXConnection}
@@ -268,9 +266,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 type="password"
                 value={notionKey}
                 onChange={(e) => setNotionKey(e.target.value)}
-                placeholder="secret_..."
+                placeholder="ntn_... or secret_..."
                 className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-colors dark:text-white"
               />
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Create an internal integration, then add it to your database from the database's Connections menu. Sync needs a proxy (below).
+              </p>
+              <HelpLinks links={[
+                { label: 'Create an integration (Notion)', href: 'https://www.notion.so/profile/integrations' },
+                { label: 'Step-by-step guide', href: guideUrl('notion') },
+              ]} />
             </div>
 
             <div className="pt-2 border-t border-slate-200 dark:border-slate-600">
@@ -326,25 +331,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-colors dark:text-white"
               />
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Optional. Notion sync and the X API refuse direct browser calls, so they need a proxy you trust: your Notion token passes through it. Summaries work without one.
+                Optional. Notion sync and the X API refuse direct browser calls, so they need a proxy you trust: your tokens pass through it. Summaries work without one. The guide shows how to run a private one for free.
               </p>
-              {proxyUrl.includes('cors-anywhere.herokuapp.com') && (
-                <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-md">
-                  <p className="text-xs text-amber-800 dark:text-amber-200 font-medium">
-                    ⚠️ Action Required for this Proxy:
-                  </p>
-                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                    You must visit <a href="https://cors-anywhere.herokuapp.com/corsdemo" target="_blank" rel="noreferrer" className="underline font-semibold hover:text-amber-900 dark:hover:text-amber-100">https://cors-anywhere.herokuapp.com/corsdemo</a> and click "Request temporary access" before this proxy will work.
-                  </p>
-                </div>
-              )}
-              {proxyUrl.includes('corsproxy.io') && (
-                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-md">
-                   <p className="text-xs text-blue-800 dark:text-blue-200 mt-1">
-                    Note: CORSProxy.io often blocks requests originating from the preview domain.
-                  </p>
-                </div>
-              )}
+              <HelpLinks links={[
+                { label: 'Set up your own proxy (guide)', href: guideUrl('your-own-proxy') },
+              ]} />
             </div>
           </div>
         </div>

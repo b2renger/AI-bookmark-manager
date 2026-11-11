@@ -13,6 +13,10 @@ export interface OpenAIPreset {
   /** Runs on the user's own machine: no key, no rate limit. */
   local: boolean;
   keyUrl?: string;
+  /** The provider's own setup page, when there is no key to fetch. */
+  docsUrl?: string;
+  /** Anchor of this service's section in docs/SETUP.md. */
+  guideAnchor?: string;
   hint: string;
 }
 
@@ -30,6 +34,7 @@ export const OPENAI_PRESETS: OpenAIPreset[] = [
     defaultModel: 'openai/gpt-oss-120b',
     local: false,
     keyUrl: 'https://console.groq.com/keys',
+    guideAnchor: 'groq',
     hint: 'Fast open models. The free plan is limited per minute, so long lists are processed slowly.',
   },
   {
@@ -39,6 +44,7 @@ export const OPENAI_PRESETS: OpenAIPreset[] = [
     defaultModel: 'openrouter/free',
     local: false,
     keyUrl: 'https://openrouter.ai/keys',
+    guideAnchor: 'openrouter',
     hint: 'Pick a model whose name ends in ":free", or keep "openrouter/free". The free daily quota is small.',
   },
   {
@@ -48,6 +54,7 @@ export const OPENAI_PRESETS: OpenAIPreset[] = [
     defaultModel: 'mistral-small-latest',
     local: false,
     keyUrl: 'https://console.mistral.ai/api-keys',
+    guideAnchor: 'mistral',
     hint: 'European provider, strong in French. Load the model list to check which names your key can use.',
   },
   {
@@ -56,6 +63,8 @@ export const OPENAI_PRESETS: OpenAIPreset[] = [
     baseUrl: 'http://localhost:11434/v1',
     defaultModel: '',
     local: true,
+    docsUrl: 'https://docs.ollama.com/faq',
+    guideAnchor: 'ollama',
     hint: 'Ollama must allow this site: set OLLAMA_ORIGINS to this page\'s origin and restart Ollama. Desktop only.',
   },
   {
@@ -64,6 +73,8 @@ export const OPENAI_PRESETS: OpenAIPreset[] = [
     baseUrl: 'http://localhost:1234/v1',
     defaultModel: '',
     local: true,
+    docsUrl: 'https://lmstudio.ai/docs/developer/core/server/settings',
+    guideAnchor: 'lm-studio',
     hint: 'Start the LM Studio server and turn on "Enable CORS" in its server settings. Desktop only.',
   },
   {

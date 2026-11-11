@@ -33,9 +33,7 @@ export async function proxyFetch(targetUrl: string, init?: RequestInit, proxyUrl
     });
   }
 
-  // A prefix-style proxy (for example your own Cloudflare Worker).
-  const requestUrl = chosenProxy.includes('corsproxy.io') || chosenProxy.includes('cors-anywhere')
-    ? `${chosenProxy}${encodeURIComponent(targetUrl)}`
-    : `${chosenProxy}${targetUrl}`;
+  // A prefix-style proxy: the target URL is appended as-is (see proxy/cloudflare-worker.js).
+  const requestUrl = `${chosenProxy}${targetUrl}`;
   return fetch(requestUrl, init);
 }
