@@ -85,6 +85,8 @@ export interface ProviderResult {
   /** Set by providers that fetch the page themselves (Gemini URL context). */
   fetchedByProvider?: Evidence;
   sources?: { uri: string; title: string }[];
+  /** Set when a different model than the selected one produced the answer. */
+  modelUsed?: string;
 }
 
 export class AiConfigError extends Error {
@@ -99,4 +101,25 @@ export class AiRateLimitError extends Error {
     super(message);
     this.name = 'AiRateLimitError';
   }
+}
+
+/** The service is overloaded. Usually passes on a later try or another model. */
+export class AiBusyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AiBusyError';
+  }
+}
+
+/** The request never got an answer (dropped connection, timeout). */
+export class AiNetworkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AiNetworkError';
+  }
+}
+
+/** Failures worth an automatic second attempt later. */
+export function isTransientError(e: unknown): boolean {
+  return e instanceof AiBusyError || e instanceof AiNetworkError || e instanceof AiRateLimitError;
 }

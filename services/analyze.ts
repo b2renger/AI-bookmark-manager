@@ -52,7 +52,7 @@ async function runProvider(input: AnalyzeInput, config: AnalyzeConfig, contextOn
       baseUrl: settings.openai.baseUrl,
       apiKey: keys.openai[preset.id] || '',
       model: settings.openai.model,
-      label: preset.label.replace(/\s*\(.*\)$/, ''),
+      label: providerLabel(settings),
     });
   }
   // Loaded on demand so the WebGPU client is not part of the first page load.
@@ -135,7 +135,11 @@ export async function analyzeUrl(url: string, config: AnalyzeConfig): Promise<Bo
     label = 'part of the content';
   }
 
-  const { score: confidenceScore, reason: confidenceReason } = score(evidence, label, settings.provider === 'webgpu');
+  const scored = score(evidence, label, settings.provider === 'webgpu');
+  const confidenceScore = scored.score;
+  const confidenceReason = result.modelUsed
+    ? `${scored.reason} (${settings.geminiModel} was overloaded, so ${result.modelUsed} answered.)`
+    : scored.reason;
   const readable = evidence !== 'none';
 
   const videoId = platform === 'youtube' ? youtubeVideoId(url) : null;
@@ -156,11 +160,40 @@ export async function analyzeUrl(url: string, config: AnalyzeConfig): Promise<Bo
   };
 }
 
-/** Pause between URLs, sized to typical free-tier per-minute limits. */
-export function delayBetweenUrls(settings: AiSettings): number {
-  if (settings.provider === 'webgpu') return 0;
+export interface Pacing {
+  /** Name the HTTP layer uses for this service's shared back-off. */
+  label: string;
+  /** Links processed at the same time. */
+  concurrency: number;
+  /** Minimum time between two request starts. */
+  intervalMs: number;
+}
+
+/** The name used for a provider in messages and for its shared back-off. */
+export function providerLabel(settings: AiSettings): string {
+  if (settings.provider === 'gemini') return 'Gemini';
+  if (settings.provider === 'webgpu') return 'On-device model';
+  return getPreset(settings.openai.presetId).label.replace(/\s*\(.*\)$/, '');
+}
+
+/**
+ * How fast to go without tripping free-tier per-minute limits.
+ *
+ * The limit that matters is "requests started per minute", so links run in
+ * parallel and only the start times are spaced out. Waiting for each answer
+ * before starting the next one wasted most of the allowance.
+ */
+export function pacingFor(settings: AiSettings): Pacing {
+  const label = providerLabel(settings);
+  // One model in memory: parallel requests would only queue behind each other.
+  if (settings.provider === 'webgpu') return { label, concurrency: 1, intervalMs: 0 };
   if (settings.provider === 'openai-compatible') {
-    return getPreset(settings.openai.presetId).local ? 0 : 3000;
+    return getPreset(settings.openai.presetId).local
+      ? { label, concurrency: 1, intervalMs: 0 }
+      : { label, concurrency: 3, intervalMs: 3000 };
   }
-  return 4000;
+  // About 14 requests a minute for lite models; the larger ones allow fewer.
+  return settings.geminiModel.includes('lite')
+    ? { label, concurrency: 4, intervalMs: 4200 }
+    : { label, concurrency: 3, intervalMs: 7000 };
 }

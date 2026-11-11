@@ -7,9 +7,10 @@ import { SettingsModal } from './components/SettingsModal';
 import { NotionSyncModal } from './components/NotionSyncModal';
 import { BulkActionBar } from './components/BulkActionBar';
 import { PwaControls } from './components/PwaControls';
-import { analyzeUrl, delayBetweenUrls, BookmarkResult } from './services/analyze';
+import { analyzeUrl, pacingFor, BookmarkResult } from './services/analyze';
+import { rateLimitCount, resetRateLimitCount } from './services/ai/http';
 import { loadAiKeys, loadAiSettings, providerProblem, saveAiKeys, saveAiSettings } from './services/ai/settings';
-import { AiConfigError, AiKeys, AiSettings } from './services/ai/types';
+import { AiConfigError, AiKeys, AiSettings, isTransientError } from './services/ai/types';
 import { LOCAL_PROXY } from './lib/proxyFetch';
 import { Bookmark } from './types';
 
@@ -115,7 +116,7 @@ const loadStoredBookmarks = (): Bookmark[] => {
         ? {
             status: 'error',
             errorMessage: 'Interrupted before it finished. Press Retry.',
-            title: /^(Queued|Reading page|Updating|Processing batch)\.\.\.$/.test(b.title) ? 'Untitled' : b.title,
+            title: /^(Queued|Reading page|Trying again|Updating|Processing batch)\.\.\.$/.test(b.title) ? 'Untitled' : b.title,
           }
         : {}),
     }));
@@ -296,45 +297,85 @@ const App: React.FC = () => {
     setBookmarks(prev => [...prev, ...newEntries]);
 
     const config = { settings: aiSettings, keys: aiKeys, xApiKey, proxyUrl: notionConfig.proxyUrl };
-    const pause = delayBetweenUrls(aiSettings);
-    const untitle = (b: Bookmark) => (b.title === 'Reading page...' || b.title === 'Queued...' ? 'Untitled' : b.title);
+    const pacing = pacingFor(aiSettings);
+    const untitle = (b: Bookmark) => (/^(Reading page|Queued|Trying again)\.\.\.$/.test(b.title) ? 'Untitled' : b.title);
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-    // One URL per request, so nothing leaks between bookmarks.
-    for (let i = 0; i < newEntries.length; i++) {
-        const entry = newEntries[i];
+    resetRateLimitCount(pacing.label);
+    let nextStart = 0;
+    let configFailure: string | null = null;
 
-        setBookmarks(prev => prev.map(b => (b.id === entry.id ? { ...b, title: 'Reading page...' } : b)));
+    // Spaces out request starts. Each time the service says "slow down", the
+    // gap widens for the rest of this import (up to four times the base).
+    const waitForSlot = async () => {
+        if (pacing.intervalMs <= 0) return;
+        const gap = pacing.intervalMs * Math.min(4, 1 + rateLimitCount(pacing.label));
+        const startAt = Math.max(Date.now(), nextStart);
+        nextStart = startAt + gap;
+        const wait = startAt - Date.now();
+        if (wait > 0) await sleep(wait);
+    };
 
-        try {
-            const res = await analyzeUrl(entry.url, config);
-            setBookmarks(prev => prev.map(b => (b.id === entry.id && b.status === 'processing' ? applyResult(b, res) : b)));
-        } catch (e: any) {
-            const msg = e instanceof Error ? e.message : String(e);
+    /** Runs the given entries through a small pool. Returns those worth one more try. */
+    const runPool = async (entries: Bookmark[], label: string): Promise<Bookmark[]> => {
+        const retryable: Bookmark[] = [];
+        let cursor = 0;
 
-            // A configuration problem will fail every remaining URL the same way: stop here.
-            if (e instanceof AiConfigError) {
-                setError(msg);
-                const remaining = new Set(newEntries.slice(i).map(b => b.id));
-                setBookmarks(prev => prev.map(b =>
-                    remaining.has(b.id) && b.status === 'processing'
-                        ? { ...b, title: untitle(b), status: 'error', errorMessage: msg }
-                        : b
-                ));
-                setIsLoading(false);
-                return;
+        const worker = async () => {
+            while (!configFailure) {
+                const entry = entries[cursor++];
+                if (!entry) return;
+
+                await waitForSlot();
+                if (configFailure) return;
+
+                setBookmarks(prev => prev.map(b => (b.id === entry.id ? { ...b, title: label, status: 'processing', errorMessage: undefined } : b)));
+
+                try {
+                    // One URL per request, so nothing leaks between bookmarks.
+                    const res = await analyzeUrl(entry.url, config);
+                    setBookmarks(prev => prev.map(b => (b.id === entry.id && b.status === 'processing' ? applyResult(b, res) : b)));
+                } catch (e: any) {
+                    const msg = e instanceof Error ? e.message : String(e);
+                    // A configuration problem will fail every remaining URL the same way.
+                    if (e instanceof AiConfigError) {
+                        configFailure = msg;
+                        return;
+                    }
+                    if (isTransientError(e)) retryable.push(entry);
+                    setBookmarks(prev => prev.map(b =>
+                        b.id === entry.id ? { ...b, title: untitle(b), status: 'error', errorMessage: msg } : b
+                    ));
+                }
             }
+        };
 
-            setBookmarks(prev => prev.map(b =>
-                b.id === entry.id ? { ...b, title: untitle(b), status: 'error', errorMessage: msg } : b
-            ));
-        }
+        await Promise.all(Array.from({ length: Math.min(pacing.concurrency, entries.length) }, worker));
+        return retryable;
+    };
 
-        // Respect per-minute quotas
-        if (pause > 0 && i + 1 < newEntries.length) {
-            await new Promise(r => setTimeout(r, pause));
-        }
+    const failed = await runPool(newEntries, 'Reading page...');
+
+    // Overload and dropped connections usually clear within seconds: give
+    // those links one more go before handing them back to the user.
+    if (!configFailure && failed.length > 0) {
+        await sleep(12000);
+        await runPool(failed, 'Trying again...');
     }
-    
+
+    if (configFailure) {
+        const message = configFailure;
+        const ids = new Set(newEntries.map(b => b.id));
+        setError(message);
+        setBookmarks(prev => prev.map(b =>
+            ids.has(b.id) && b.status === 'processing'
+                ? { ...b, title: untitle(b), status: 'error', errorMessage: message }
+                : b
+        ));
+        setIsLoading(false);
+        return;
+    }
+
     setIsLoading(false);
     playSuccessChime();
   }, [bookmarks, xApiKey, notionConfig.proxyUrl, aiSettings, aiKeys]);

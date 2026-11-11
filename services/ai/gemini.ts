@@ -1,7 +1,8 @@
 import { errorMessageFrom, requestJson } from './http';
 import { parseAnalysis } from './json';
 import { ANALYSIS_GEMINI_SCHEMA, SYSTEM_PROMPT, buildFetchingPrompt, buildContextPrompt } from './prompt';
-import { AiConfigError, AnalyzeInput, Evidence, ProviderResult } from './types';
+import { GEMINI_FALLBACK_MODELS } from './settings';
+import { AiBusyError, AiConfigError, AnalyzeInput, Evidence, ProviderResult } from './types';
 
 /**
  * Gemini, called straight from the browser with the user's own key.
@@ -65,7 +66,7 @@ function readText(candidate: any): string {
     .join('');
 }
 
-export async function analyzeWithGemini(
+async function analyzeWithModel(
   input: AnalyzeInput,
   opts: {
     apiKey: string;
@@ -176,4 +177,47 @@ export async function listGeminiModels(apiKey: string): Promise<string[]> {
     .map((m) => String(m.name || '').replace(/^models\//, ''))
     .filter((id) => id.startsWith('gemini') && !excluded.test(id))
     .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+}
+
+/** Models found overloaded recently, so later links do not wait on them again. */
+const busyUntil = new Map<string, number>();
+const BUSY_MEMORY_MS = 3 * 60 * 1000;
+
+/**
+ * Analyses one URL, moving to another Gemini model when the chosen one is
+ * overloaded ("high demand"). That error is about the model, not about the
+ * user's quota, so a sibling model usually answers straight away.
+ */
+export async function analyzeWithGemini(
+  input: AnalyzeInput,
+  opts: { apiKey: string; model: string; useSearch: boolean; contextOnly?: boolean },
+): Promise<ProviderResult> {
+  const alternatives = GEMINI_FALLBACK_MODELS.filter((m) => m !== opts.model);
+  // Prefer a model of the same weight class: its free quota is the closest.
+  const sameClass = alternatives.filter((m) => m.includes('lite') === opts.model.includes('lite'));
+  const candidates = [opts.model, ...sameClass, ...alternatives.filter((m) => !sameClass.includes(m))].slice(0, 3);
+
+  const now = Date.now();
+  const ordered = [
+    ...candidates.filter((m) => (busyUntil.get(m) ?? 0) <= now),
+    ...candidates.filter((m) => (busyUntil.get(m) ?? 0) > now),
+  ];
+
+  let busyError: unknown = null;
+  for (const model of ordered) {
+    try {
+      const result = await analyzeWithModel(input, { ...opts, model });
+      return model === opts.model ? result : { ...result, modelUsed: model };
+    } catch (err) {
+      if (err instanceof AiBusyError) {
+        busyUntil.set(model, Date.now() + BUSY_MEMORY_MS);
+        busyError = busyError ?? err;
+        continue;
+      }
+      // A fallback model this key cannot use is not the user's problem.
+      if (model !== opts.model && err instanceof AiConfigError) continue;
+      throw err;
+    }
+  }
+  throw busyError ?? new AiBusyError('Gemini is overloaded right now. Try again in a few minutes.');
 }
