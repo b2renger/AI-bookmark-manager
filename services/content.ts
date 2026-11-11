@@ -276,28 +276,88 @@ async function fetchViaProxy(url: string, proxyUrl: string): Promise<PageContext
   return null;
 }
 
-/**
- * Jina Reader returns a page as plain text / Markdown.
- * The URL is sent to jina.ai, which the Settings screen says explicitly.
- */
-async function fetchViaReader(url: string, jinaKey?: string): Promise<PageContext | null> {
+interface ReaderAttempt {
+  /** HTTP status, or 0 when the browser could not complete the request. */
+  status: number;
+  text: string;
+}
+
+async function requestReader(url: string, jinaKey: string | undefined, timeoutMs: number): Promise<ReaderAttempt> {
   const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), READER_TIMEOUT_MS);
+  const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
     // Without a key this is a "simple" request, so no CORS preflight is needed.
     const headers: Record<string, string> = {};
     if (jinaKey) headers.Authorization = `Bearer ${jinaKey}`;
     const res = await fetch(`https://r.jina.ai/${url}`, { headers, signal: controller.signal });
-    if (!res.ok) return null;
-    const text = (await res.text()).trim();
-    if (text.length >= MIN_CONTENT_CHARS) return ctx('content', 'page text via Jina Reader', text);
-    if (text.length > 0) return ctx('metadata', 'partial text via Jina Reader', text);
+    return { status: res.status, text: (await res.text()).trim() };
   } catch {
-    /* blocked, offline or timed out */
+    return { status: 0, text: '' };
   } finally {
     clearTimeout(id);
   }
+}
+
+/**
+ * Jina Reader returns a page as plain text / Markdown.
+ * The URL is sent to jina.ai, which the Settings screen says explicitly.
+ *
+ * If the request with a key fails for a reason tied to the key (rejected, or
+ * blocked by the browser), it is retried without one: a wrong key should not
+ * cost the user the free keyless service.
+ */
+async function fetchViaReader(url: string, jinaKey?: string): Promise<PageContext | null> {
+  let attempt = await requestReader(url, jinaKey, READER_TIMEOUT_MS);
+  if (jinaKey && (attempt.status === 0 || attempt.status === 401 || attempt.status === 403)) {
+    attempt = await requestReader(url, undefined, READER_TIMEOUT_MS);
+  }
+  if (attempt.status < 200 || attempt.status >= 300) return null;
+  if (attempt.text.length >= MIN_CONTENT_CHARS) return ctx('content', 'page text via Jina Reader', attempt.text);
+  if (attempt.text.length > 0) return ctx('metadata', 'partial text via Jina Reader', attempt.text);
   return null;
+}
+
+export interface ReaderTestResult {
+  ok: boolean;
+  message: string;
+}
+
+/** Checks, from this browser, that Jina Reader answers and accepts the key. */
+export async function testJinaReader(jinaKey?: string): Promise<ReaderTestResult> {
+  const sample = 'https://example.com/';
+  const looksRight = (a: ReaderAttempt) => a.status >= 200 && a.status < 300 && /example domain/i.test(a.text);
+  const describe = (a: ReaderAttempt) =>
+    a.status === 0 ? 'the browser could not complete the request' : `Jina answered with status ${a.status}`;
+
+  if (jinaKey) {
+    const keyed = await requestReader(sample, jinaKey, 25_000);
+    if (looksRight(keyed)) {
+      return { ok: true, message: `Success. Jina Reader accepted your key and returned the test page (${keyed.text.length} characters).` };
+    }
+    const keyless = await requestReader(sample, undefined, 25_000);
+    if (keyed.status === 401 || keyed.status === 403) {
+      return {
+        ok: false,
+        message: `Jina rejected this key (status ${keyed.status}). Check that it was copied completely.${looksRight(keyless) ? ' The Reader does work without a key, so pages will still be read at the lower free rate limit.' : ''}`,
+      };
+    }
+    if (looksRight(keyless)) {
+      return {
+        ok: false,
+        message: `The Reader works without a key, but the request with your key failed (${describe(keyed)}). Pages will still be read at the lower free rate limit.`,
+      };
+    }
+    return { ok: false, message: `Jina Reader could not be reached from this browser (${describe(keyless)}). Check your connection or any content blocker.` };
+  }
+
+  const keyless = await requestReader(sample, undefined, 25_000);
+  if (looksRight(keyless)) {
+    return { ok: true, message: `Success. Jina Reader works without a key (${keyless.text.length} characters returned). A key only raises the rate limit.` };
+  }
+  if (keyless.status === 429) {
+    return { ok: false, message: 'Jina Reader answered "too many requests". Wait a minute, or add a key to raise the limit.' };
+  }
+  return { ok: false, message: `Jina Reader could not be reached from this browser (${describe(keyless)}). Check your connection or any content blocker.` };
 }
 
 // ---------------------------------------------------------------------------

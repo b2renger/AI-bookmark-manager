@@ -70,6 +70,8 @@ Jina Reader turns a web page into plain text for models that cannot open pages t
 
 To raise the limit, get a free key on <https://jina.ai/reader> (the key is shown in the "API Key & Billing" part of the page) and paste it under **Fetch page text with Jina Reader**.
 
+Tap **Test Jina Reader** to check from your browser that the Reader answers and that your key is accepted.
+
 When this option is on, the address of each link is sent to jina.ai.
 
 ## X / Twitter

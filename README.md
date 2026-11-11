@@ -25,6 +25,10 @@ Model line-ups and free quotas change often. The **Load list** button asks the s
 
 Your browser may ask for permission to let the site reach your local network.
 
+## Install as an app
+
+The site is a PWA. In Chrome or Edge, use the **Install** offer shown in the app or the browser menu's "Install app" / "Add to Home screen". On iPhone and iPad, open it in Safari and use **Share > Add to Home Screen**. Once installed it starts without a network; cloud models still need a connection, and new versions are offered with a **Reload** button.
+
 ## Confidence score
 
 The score describes what was actually read, not how sure the model feels:

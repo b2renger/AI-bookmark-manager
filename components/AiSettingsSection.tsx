@@ -3,6 +3,7 @@ import { listGeminiModels } from '../services/ai/gemini';
 import { listOpenAICompatibleModels } from '../services/ai/openaiCompatible';
 import { GEMINI_FALLBACK_MODELS, OPENAI_PRESETS, cleanKey, getPreset } from '../services/ai/settings';
 import { AiKeys, AiSettings, ProviderId } from '../services/ai/types';
+import { testJinaReader } from '../services/content';
 import { DeviceProfile, ModelAvailability, assessAllModels, probeDevice } from '../services/ai/webgpu/deviceProbe';
 import { WebGPUModelSpec, formatSize } from '../services/ai/webgpu/models';
 import type { WorkerProgress } from '../services/ai/webgpu/protocol';
@@ -48,6 +49,7 @@ export const AiSettingsSection: React.FC<Props> = ({ settings, keys, onChange })
   const [gpuProgress, setGpuProgress] = useState<WorkerProgress | null>(null);
   const [gpuBusy, setGpuBusy] = useState(false);
   const [gpuLoaded, setGpuLoaded] = useState<string | null>(null);
+  const [jinaTest, setJinaTest] = useState<{ loading: boolean; ok: boolean | null; message: string }>({ loading: false, ok: null, message: '' });
 
   const set = (patch: Partial<AiSettings>) => onChange({ ...settings, ...patch }, keys);
   const setKeys = (patch: Partial<AiKeys>) => onChange(settings, { ...keys, ...patch });
@@ -109,6 +111,12 @@ export const AiSettingsSection: React.FC<Props> = ({ settings, keys, onChange })
     } catch (e: any) {
       setListStatus({ loading: false, error: e?.message || 'Could not load the model list.' });
     }
+  };
+
+  const runJinaTest = async () => {
+    setJinaTest({ loading: true, ok: null, message: '' });
+    const result = await testJinaReader(cleanKey(keys.jina) || undefined);
+    setJinaTest({ loading: false, ok: result.ok, message: result.message });
   };
 
   const changePreset = (id: string) => {
@@ -422,10 +430,28 @@ export const AiSettingsSection: React.FC<Props> = ({ settings, keys, onChange })
               type="password"
               autoComplete="off"
               value={keys.jina}
-              onChange={(e) => setKeys({ jina: e.target.value })}
+              onChange={(e) => {
+                setJinaTest({ loading: false, ok: null, message: '' });
+                setKeys({ jina: e.target.value });
+              }}
               placeholder="Jina API key (optional, raises the rate limit)"
               className={`${inputClass} mt-2`}
             />
+          )}
+          {settings.reader === 'jina' && (
+            <>
+              <button type="button" onClick={runJinaTest} disabled={jinaTest.loading} className={`${smallButtonClass} w-full mt-2`}>
+                {jinaTest.loading ? 'Testing…' : keys.jina.trim() ? 'Test Jina Reader with this key' : 'Test Jina Reader'}
+              </button>
+              {jinaTest.message && (
+                <div className={`mt-2 p-3 rounded-md text-xs border ${jinaTest.ok
+                  ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300'
+                  : 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-600 dark:text-red-300'}`}
+                >
+                  {jinaTest.message}
+                </div>
+              )}
+            </>
           )}
           {settings.reader === 'jina' && (
             <HelpLinks links={[

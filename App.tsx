@@ -6,6 +6,7 @@ import { Header } from './components/Header';
 import { SettingsModal } from './components/SettingsModal';
 import { NotionSyncModal } from './components/NotionSyncModal';
 import { BulkActionBar } from './components/BulkActionBar';
+import { PwaControls } from './components/PwaControls';
 import { analyzeUrl, delayBetweenUrls, BookmarkResult } from './services/analyze';
 import { loadAiKeys, loadAiSettings, providerProblem, saveAiKeys, saveAiSettings } from './services/ai/settings';
 import { AiConfigError, AiKeys, AiSettings } from './services/ai/types';
@@ -94,8 +95,37 @@ const stripUtmParams = (urlString: string): string => {
   }
 };
 
+/**
+ * Read once, as the initial state. Loading in an effect let the "save" effect
+ * write an empty list first, which could erase the stored bookmarks.
+ */
+const loadStoredBookmarks = (): Bookmark[] => {
+  try {
+    const stored = localStorage.getItem(AI_BOOKMARKS_STORAGE_KEY);
+    if (!stored) return [];
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((b: any) => ({
+      ...b,
+      // Ensure legacy data has a keywords array
+      keywords: Array.isArray(b.keywords) ? b.keywords : [],
+      // Nothing is running right after a load: an item still marked as
+      // processing was cut off by a reload or by closing the app.
+      ...(b.status === 'processing'
+        ? {
+            status: 'error',
+            errorMessage: 'Interrupted before it finished. Press Retry.',
+            title: /^(Queued|Reading page|Updating|Processing batch)\.\.\.$/.test(b.title) ? 'Untitled' : b.title,
+          }
+        : {}),
+    }));
+  } catch (e) {
+    return [];
+  }
+};
+
 const App: React.FC = () => {
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>(loadStoredBookmarks);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -129,20 +159,6 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
-    const stored = localStorage.getItem(AI_BOOKMARKS_STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        // Ensure legacy data has keywords array
-        const sanitized = Array.isArray(parsed) ? parsed.map((b: any) => ({
-            ...b,
-            keywords: Array.isArray(b.keywords) ? b.keywords : []
-        })) : [];
-        setBookmarks(sanitized);
-      } catch (e) {
-        localStorage.removeItem(AI_BOOKMARKS_STORAGE_KEY);
-      }
-    }
     const storedXKey = localStorage.getItem(X_API_KEY_STORAGE_KEY);
     if (storedXKey) {
         setXApiKey(storedXKey);
@@ -454,6 +470,8 @@ const App: React.FC = () => {
         aiKeys={aiKeys}
         onSaveAi={handleSaveAi}
       />
+
+      <PwaControls busy={isLoading} />
 
       <NotionSyncModal 
         isOpen={isNotionSyncOpen}
