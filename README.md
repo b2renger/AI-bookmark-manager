@@ -29,6 +29,10 @@ Your browser may ask for permission to let the site reach your local network.
 
 The site is a PWA. In Chrome or Edge, use the **Install** offer shown in the app or the browser menu's "Install app" / "Add to Home screen". On iPhone and iPad, open it in Safari and use **Share > Add to Home Screen**. Once installed it starts without a network; cloud models still need a connection, and new versions are offered with a **Reload** button.
 
+## Version
+
+The version is shown under the title and at the bottom of Settings. Its last number is the deployment counter, so it goes up by one each time the site is deployed.
+
 ## Confidence score
 
 The score describes what was actually read, not how sure the model feels:

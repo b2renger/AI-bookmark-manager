@@ -20,7 +20,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ selectedCount, onC
     return (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white dark:bg-slate-800 text-slate-800 dark:text-white px-4 py-3 md:px-6 md:py-4 rounded-full shadow-2xl z-50 flex items-center gap-4 md:gap-6 animate-fade-in-up border border-slate-200 dark:border-slate-700 w-[95%] md:w-auto max-w-3xl ring-1 ring-slate-900/5">
             <div className="flex items-center gap-3 md:gap-4 flex-shrink-0">
-                <div className="flex items-center justify-center bg-blue-600 text-white text-xs font-bold rounded-full h-6 w-6 md:h-7 md:w-7">
+                <div className="flex items-center justify-center bg-blue-600 text-white dark:text-slate-900 text-xs font-bold rounded-full h-6 w-6 md:h-7 md:w-7">
                     {selectedCount}
                 </div>
                 <span className="font-semibold text-sm hidden sm:inline">Selected</span>
@@ -45,7 +45,7 @@ export const BulkActionBar: React.FC<BulkActionBarProps> = ({ selectedCount, onC
                 <button 
                     type="submit" 
                     disabled={!keyword.trim()}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap transition-colors shadow-sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-white dark:text-slate-900 px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap transition-colors shadow-sm"
                 >
                     Add
                 </button>

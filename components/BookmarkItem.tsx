@@ -268,10 +268,10 @@ export const BookmarkItem: React.FC<BookmarkItemProps> = ({
 
   return (
     <div 
-      className={`bg-white dark:bg-slate-800/95 border border-slate-200 dark:border-slate-700/80 p-5 rounded-2xl shadow-sm hover:shadow-md transition-all ${bookmark.status === 'warning' ? 'ring-2 ring-amber-500/80' : ''} ${isSelected ? 'ring-2 ring-blue-500 bg-blue-50/40 dark:bg-slate-800' : ''}`} 
+      className={`bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all ${bookmark.status === 'warning' ? 'ring-2 ring-amber-500/80' : ''} ${isSelected ? 'ring-2 ring-blue-500 bg-blue-50/40 dark:bg-slate-800' : ''}`} 
       aria-live="polite"
     >
-      <div className="flex gap-4">
+      <div className="flex gap-3 sm:gap-4">
         {/* Checkbox Section */}
         <div className="pt-1 flex-shrink-0">
           <input 
@@ -421,7 +421,7 @@ export const BookmarkItem: React.FC<BookmarkItemProps> = ({
                       rel="noopener noreferrer"
                       className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-80 group-hover:opacity-100 transition-opacity"
                     >
-                      <div className="w-7 h-7 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg">
+                      <div className="w-7 h-7 rounded-full bg-red-600 text-white dark:text-slate-900 flex items-center justify-center shadow-lg">
                         <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                       </div>
                     </a>

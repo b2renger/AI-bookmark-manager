@@ -5,6 +5,7 @@ import { getAccessibleDatabases } from '../services/notionService';
 import { proxyFetch } from '../lib/proxyFetch';
 import { AiSettingsSection } from './AiSettingsSection';
 import { HelpLinks, guideUrl } from './HelpLinks';
+import { versionDetails } from '../lib/version';
 import { cleanKey } from '../services/ai/settings';
 import { AiKeys, AiSettings } from '../services/ai/types';
 
@@ -340,7 +341,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
 
-        <div className="mt-8 flex justify-end space-x-3">
+        <p className="mt-6 text-center text-xs text-slate-500 dark:text-slate-400">AI Bookmark Manager {versionDetails()}</p>
+
+        <div className="mt-4 flex justify-end space-x-3">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
@@ -349,7 +352,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
           <button
             onClick={handleSave}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors"
+            className="px-4 py-2 text-sm font-medium text-white dark:text-slate-900 bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors"
           >
             Save Settings
           </button>

@@ -2,6 +2,16 @@ import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import pkg from './package.json';
+
+/**
+ * Version shown in the app: major.minor come from package.json, and the last
+ * number is the deployment counter supplied by the deploy workflow
+ * (BUILD_NUMBER = the GitHub Actions run number). Local builds show "-dev".
+ */
+const [major, minor] = pkg.version.split('.');
+const buildNumber = process.env.BUILD_NUMBER;
+const appVersion = buildNumber ? `${major}.${minor}.${buildNumber}` : `${pkg.version}-dev`;
 
 /**
  * Static build, deployable to GitHub Pages and installable as a PWA.
@@ -16,6 +26,11 @@ import { VitePWA } from 'vite-plugin-pwa';
  */
 export default defineConfig({
   base: './',
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+    __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
+    __BUILD_COMMIT__: JSON.stringify(process.env.BUILD_COMMIT ?? ''),
+  },
   server: {
     port: 3000,
     host: '0.0.0.0',
@@ -32,8 +47,8 @@ export default defineConfig({
         name: 'AI Bookmark Manager',
         short_name: 'Bookmarks AI',
         description: 'Paste links and get reliable summaries and keywords, with your own AI keys.',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        theme_color: '#171717',
+        background_color: '#171717',
         display: 'standalone',
         display_override: ['standalone', 'minimal-ui'],
         orientation: 'any',

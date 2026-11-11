@@ -215,7 +215,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({ bookmarks, onOpenNot
       <button
         onClick={() => setIsOpen(!isOpen)}
         disabled={bookmarks.length === 0}
-        className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition-colors disabled:bg-slate-400 dark:disabled:bg-slate-600 disabled:cursor-not-allowed"
+        className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-white dark:text-slate-900 bg-indigo-600 hover:bg-indigo-700 rounded-md transition-colors disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:text-slate-500 dark:disabled:text-slate-400 disabled:cursor-not-allowed"
         title="Export options"
         aria-haspopup="true"
         aria-expanded={isOpen}

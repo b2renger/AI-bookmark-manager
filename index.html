@@ -8,18 +8,79 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Bookmarks AI" />
-    <meta name="theme-color" content="#0f172a" />
+    <meta name="theme-color" content="#171717" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>AI Bookmark Manager</title>
+    <style>
+      /* Accent palettes as RGB triplets, so Tailwind opacity modifiers keep working.
+         Light theme: muted tones. Dark theme: pastels on a gray scale. */
+      :root {
+        --primary-50: 241 244 248; --primary-100: 225 232 240; --primary-200: 197 210 224; --primary-300: 159 179 200; --primary-400: 119 144 173; --primary-500: 90 118 150; --primary-600: 72 97 128; --primary-700: 60 80 105; --primary-800: 51 67 87; --primary-900: 43 56 72; --primary-950: 28 37 48;
+        --success-50: 242 246 243; --success-100: 224 234 227; --success-200: 195 214 201; --success-300: 155 186 165; --success-400: 115 156 129; --success-500: 86 128 102; --success-600: 68 103 81; --success-700: 56 83 67; --success-800: 47 68 56; --success-900: 39 56 47; --success-950: 23 34 28;
+        --warning-50: 249 245 236; --warning-100: 241 231 208; --warning-200: 227 207 163; --warning-300: 211 178 114; --warning-400: 194 151 75; --warning-500: 168 125 55; --warning-600: 134 96 42; --warning-700: 110 78 38; --warning-800: 90 64 36; --warning-900: 75 54 33; --warning-950: 43 30 16;
+        --danger-50: 249 241 240; --danger-100: 242 223 220; --danger-200: 229 192 187; --danger-300: 212 154 147; --danger-400: 192 117 109; --danger-500: 168 89 80; --danger-600: 141 71 64; --danger-700: 116 59 54; --danger-800: 96 51 48; --danger-900: 81 45 43; --danger-950: 43 22 21;
+      }
+      .dark {
+        --primary-50: 238 244 255; --primary-100: 223 233 255; --primary-200: 199 216 251; --primary-300: 176 200 245; --primary-400: 157 187 240; --primary-500: 143 176 234; --primary-600: 134 168 230; --primary-700: 163 189 240; --primary-800: 54 67 92; --primary-900: 38 47 64; --primary-950: 28 34 45;
+        --success-50: 236 250 242; --success-100: 217 243 228; --success-200: 191 232 209; --success-300: 166 220 189; --success-400: 148 209 174; --success-500: 134 199 162; --success-600: 125 192 154; --success-700: 152 209 176; --success-800: 47 74 60; --success-900: 36 54 45; --success-950: 26 38 32;
+        --warning-50: 255 246 232; --warning-100: 253 236 208; --warning-200: 248 221 176; --warning-300: 242 205 147; --warning-400: 236 192 126; --warning-500: 230 181 111; --warning-600: 224 173 102; --warning-700: 235 192 131; --warning-800: 86 68 39; --warning-900: 61 49 30; --warning-950: 42 34 22;
+        --danger-50: 255 240 239; --danger-100: 253 224 222; --danger-200: 248 199 196; --danger-300: 242 174 170; --danger-400: 236 156 152; --danger-500: 230 142 138; --danger-600: 224 134 129; --danger-700: 235 160 156; --danger-800: 90 51 51; --danger-900: 64 38 38; --danger-950: 44 27 27;
+      }
+
+      /* Native controls (selects, checkboxes, scrollbars) follow the theme too. */
+      :root { color-scheme: light; }
+      .dark { color-scheme: dark; }
+      input[type='checkbox'], input[type='radio'] { accent-color: rgb(var(--primary-600)); }
+
+      @keyframes fade-in {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: none; }
+      }
+    </style>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      // Explicitly set Tailwind to use the 'class' strategy for dark mode.
-      // This allows the manual toggle button to work correctly.
-      tailwind.config = {
-        darkMode: 'class',
-      }
+      /*
+       * Theme.
+       *
+       * The components use Tailwind's stock colour names. Rather than restyle
+       * every class, the names are remapped here so the whole app draws from
+       * one small palette:
+       *   - slate / gray        -> one neutral gray scale (the dark theme is grayscale)
+       *   - blue, indigo, ...   -> "primary"
+       *   - green, emerald      -> "success"
+       *   - amber, yellow       -> "warning"
+       *   - red, rose           -> "danger"
+       * The four accents are CSS variables (see the style block above) that
+       * switch between muted tones in the light theme and pastels in the dark one.
+       */
+      (function () {
+        var steps = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+        function accent(name) {
+          var scale = {};
+          steps.forEach(function (s) { scale[s] = 'rgb(var(--' + name + '-' + s + ') / <alpha-value>)'; });
+          return scale;
+        }
+        var neutral = { 50: '#fafafa', 100: '#f4f4f4', 200: '#e5e5e5', 300: '#d4d4d4', 400: '#a3a3a3', 500: '#737373', 600: '#525252', 700: '#404040', 750: '#333333', 800: '#262626', 900: '#171717', 950: '#0c0c0c' };
+        var primary = accent('primary'), success = accent('success'), warning = accent('warning'), danger = accent('danger');
+        tailwind.config = {
+          // 'class' lets the manual toggle button control the theme.
+          darkMode: 'class',
+          theme: {
+            extend: {
+              colors: {
+                slate: neutral, gray: neutral, zinc: neutral, neutral: neutral,
+                blue: primary, indigo: primary, sky: primary, purple: primary, violet: primary, cyan: primary,
+                green: success, emerald: success, teal: success,
+                amber: warning, yellow: warning, orange: warning,
+                red: danger, rose: danger, pink: danger,
+              },
+              animation: { 'fade-in': 'fade-in 0.18s ease-out' },
+            },
+          },
+        };
+      })();
     </script>
-</head>
+  </head>
   <body class="bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>

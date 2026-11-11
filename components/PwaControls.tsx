@@ -25,7 +25,7 @@ function rememberDismissal() {
 }
 
 const pill = 'pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs shadow-md';
-const action = 'rounded-lg px-3 py-1.5 font-semibold text-white transition-colors';
+const action = 'rounded-lg px-3 py-1.5 font-semibold text-white dark:text-slate-900 transition-colors';
 
 export const PwaControls: React.FC<{ busy?: boolean }> = ({ busy }) => {
   const [pwa, setPwa] = useState<PwaState | null>(null);
