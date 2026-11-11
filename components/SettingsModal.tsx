@@ -74,7 +74,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onSaveNotionConfig({ apiKey: sanitizedNotionKey, proxyUrl: proxyUrl.trim() });
     const cleanedOpenai: Record<string, string> = {};
     Object.entries(localKeys.openai).forEach(([id, key]) => {
-      const cleaned = cleanKey(key);
+      const cleaned = cleanKey(String(key ?? ''));
       if (cleaned) cleanedOpenai[id] = cleaned;
     });
     onSaveAi(

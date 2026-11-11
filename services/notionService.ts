@@ -204,7 +204,7 @@ export async function exportToNotion(
             queryResult.results.forEach((page: any) => {
               const urlProp = Object.values(page.properties).find((p: any) => p.type === 'url');
               if (urlProp && typeof urlProp === 'object' && 'url' in urlProp && urlProp.url) {
-                existingUrls.add(urlProp.url);
+                existingUrls.add(String(urlProp.url));
               }
             });
           }
